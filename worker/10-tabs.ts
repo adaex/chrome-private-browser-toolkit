@@ -58,13 +58,14 @@ async function checkDuplicate(tabId: number) {
 }
 
 // 如果有全屏的窗口，则把当前 tab 移动到全屏的窗口里去
-async function toFullscreenWindow(tabId: number) {
+async function toFullscreenWindow(tabId: number, windowId: number) {
   const windows = await chrome.windows.getAll();
   const fullscreenWindow = windows.find(window => window.state === 'fullscreen' && window.type === 'normal');
+  const currentWindow = windows.findLast(window => window.id === windowId);
 
-  // console.log(new Date().toISOString(), 'checkDuplicate windows', windows);
+  // console.log(new Date().toISOString(), 'toFullscreenWindow windows', windows);
 
-  if (fullscreenWindow?.id) {
+  if (fullscreenWindow?.id && currentWindow?.type === 'normal' && currentWindow.state === 'normal') {
     await chrome.windows.update(fullscreenWindow.id, { focused: true }).catch(noop);
     await chrome.tabs.move(tabId, { windowId: fullscreenWindow.id, index: -1 }).catch(noop);
     await chrome.tabs.update(tabId, { active: true }).catch(noop);

@@ -7,9 +7,9 @@ chrome.tabs.onCreated.addListener(tab => {
   // if (tabId) console.log(new Date().toISOString(), 'onCreated', tab);
 
   if (tabId) {
-    // 打开了一个全新普通的窗口，宽高是 1200 * 829，这个时候需要把这个 tab 移动到全屏的窗口里去
-    if (!tab.openerTabId && tab.index === 0 && tab.width === 1200 && tab.height === 829) {
-      queue.run(() => toFullscreenWindow(tabId));
+    // 从外部打开一个全新普通的窗口，这个时候需要把这个 tab 移动到全屏的窗口里去
+    if (!tab.openerTabId && tab.index === 0) {
+      queue.run(() => toFullscreenWindow(tabId, tab.windowId));
     }
 
     queue.run(() => checkDuplicate(tabId));
