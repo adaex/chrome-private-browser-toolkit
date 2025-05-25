@@ -2,9 +2,9 @@
   "compilerOptions": {
     "strict": true,
     "target": "ESNext",
-    "removeComments": true,
     "outFile": "dist/worker.js",
-    "pretty": true
+    "pretty": true,
+    "removeComments": true
   },
   "include": ["worker"]
 }
