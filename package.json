@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "dev": "npm run init && tsc -w",
+    "build": "npm run init && tsc",
+    "init": "mkdir -p dist && rm -rf dist/* && cp -r manifest.json icon style dist"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.323",
+    "typescript": "^5.8.3"
+  }
+}
