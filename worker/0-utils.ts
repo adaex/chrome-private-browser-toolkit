@@ -23,7 +23,5 @@ class Queue {
   }
 }
 
-const queue = new Queue(1);
-
 const noop = () => {};
 const timeout = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
