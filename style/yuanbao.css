@@ -1,0 +1,8 @@
+@media (max-width: 1727px) {
+  .yb-layout .agent-dialogue__tool__download {
+    display: none !important;
+  }
+  .yb-common-nav__wrap [class^='index_pc_download'] {
+    display: none !important;
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Private Browser Kit",
+  "description": "A private browser kit for Chrome",
+  "version": "0.1.0",
+  "action": {},
+  "permissions": ["tabs", "tabGroups", "bookmarks"],
+  "icons": {
+    "512": "icon/icon_512.png"
+  },
+  "background": {
+    "service_worker": "worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://yuanbao.tencent.com/*"],
+      "css": ["style/yuanbao.css"]
+    },
+    {
+      "matches": ["https://github.com/copilot/*"],
+      "css": ["style/github-copilot.css"]
+    }
+  ]
+}
