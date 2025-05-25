@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Private Browser Kit",
-  "description": "A private browser kit for Chrome",
+  "name": "Private Browser Toolkit",
+  "description": "A private browser toolkit for chrome",
   "version": "0.1.0",
   "action": {},
   "permissions": ["tabs", "tabGroups", "bookmarks"],
