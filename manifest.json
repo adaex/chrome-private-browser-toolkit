@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Private Browser Toolkit",
-  "description": "A private browser toolkit for chrome",
+  "description": "A private browser toolkit for chrome.",
   "version": "0.1.0",
   "action": {},
   "permissions": ["tabs", "tabGroups", "bookmarks"],
@@ -14,12 +14,8 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://yuanbao.tencent.com/*"],
-      "css": ["style/yuanbao.css"]
-    },
-    {
-      "matches": ["https://github.com/copilot/*"],
-      "css": ["style/github-copilot.css"]
+      "matches": ["https://yuanbao.tencent.com/*", "https://github.com/copilot/*"],
+      "css": ["style/custom.css"]
     }
   ]
 }
