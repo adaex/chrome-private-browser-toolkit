@@ -12,10 +12,5 @@
     "service_worker": "worker.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["https://yuanbao.tencent.com/*", "https://github.com/copilot/*"],
-      "css": ["style/custom.css"]
-    }
-  ]
+  "content_scripts": []
 }
