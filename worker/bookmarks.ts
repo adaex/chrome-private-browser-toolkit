@@ -1,3 +1,5 @@
+import { catchError } from './queue.js';
+
 // 类型定义
 type BookmarkNode = chrome.bookmarks.BookmarkTreeNode;
 type TabGroup = chrome.tabGroups.TabGroup;
@@ -5,7 +7,7 @@ type Tab = chrome.tabs.Tab;
 
 // 常量定义
 const ROOT_FOLDER_NAME = '标签组';
-const COLOR_ICON_MAP = {
+const COLOR_ICON_MAP: Record<string, string> = {
   grey: '🩶',
   blue: '💙',
   red: '❤️',
@@ -17,8 +19,8 @@ const COLOR_ICON_MAP = {
   orange: '🧡',
 };
 
-// 工具函数
-const folderMapping = new Map<number, string>();
+// 状态
+export const folderMapping = new Map<number, string>();
 
 // 查找或创建根文件夹
 async function _getOrCreateRootFolder(tree: BookmarkNode[]) {
@@ -57,7 +59,7 @@ async function _getAndSyncGroupFolder(tree: BookmarkNode[], group: TabGroup) {
 
   // 更新文件夹名称
   if (folder.title !== title) {
-    await chrome.bookmarks.update(folder.id, { title }).catch(noop);
+    await chrome.bookmarks.update(folder.id, { title }).catch(catchError('bookmarks.update'));
   }
 
   return folder;
@@ -73,8 +75,6 @@ async function _syncGroupBookmarks(groupFolder: BookmarkNode, tabs: Tab[]) {
     if (bookmark.url) bookmarkMap.set(bookmark.url, bookmark);
   }
 
-  // console.log('syncGroupBookmarks', 'bookmarks', bookmarks, 'tabs', tabs);
-
   // 更新或创建书签
   for (const [index, tab] of tabs.entries()) {
     const url = tab?.pendingUrl ?? tab?.url ?? '';
@@ -82,27 +82,27 @@ async function _syncGroupBookmarks(groupFolder: BookmarkNode, tabs: Tab[]) {
     const existingBookmark = bookmarkMap.get(url);
     if (existingBookmark) {
       if (tab.title && existingBookmark.title !== tab.title) {
-        await chrome.bookmarks.update(existingBookmark.id, { title: tab.title }).catch(noop);
+        await chrome.bookmarks.update(existingBookmark.id, { title: tab.title }).catch(catchError('bookmarks.update'));
       }
       if (existingBookmark.index !== index) {
-        await chrome.bookmarks.move(existingBookmark.id, { index }).catch(noop);
+        await chrome.bookmarks.move(existingBookmark.id, { index }).catch(catchError('bookmarks.move'));
       }
       bookmarkIdSet.add(existingBookmark.id);
     } else {
-      await chrome.bookmarks.create({ parentId: groupFolder.id, title: tab.title || url, url, index }).catch(noop);
+      await chrome.bookmarks.create({ parentId: groupFolder.id, title: tab.title || url, url, index }).catch(catchError('bookmarks.create'));
     }
   }
 
   // 清理不再存在的标签对应的书签
   for (const bookmark of bookmarks) {
     if (bookmark.url && !bookmarkIdSet.has(bookmark.id)) {
-      await chrome.bookmarks.remove(bookmark.id).catch(noop);
+      await chrome.bookmarks.remove(bookmark.id).catch(catchError('bookmarks.remove'));
     }
   }
 }
 
 // 更新某个分组和对应的书签
-async function updateGroupAndBookmarks(groupOrId: TabGroup | number) {
+export async function updateGroupAndBookmarks(groupOrId: TabGroup | number) {
   const group = typeof groupOrId === 'object' ? groupOrId : await chrome.tabGroups.get(groupOrId);
   if (!group) return;
   const tabs = await chrome.tabs.query({ groupId: group.id });
@@ -113,7 +113,7 @@ async function updateGroupAndBookmarks(groupOrId: TabGroup | number) {
 }
 
 // 更新所有的书签文件夹
-async function initUpdateAllGroupFolder() {
+export async function initUpdateAllGroupFolder() {
   const tree = await chrome.bookmarks.getTree();
   const groups = await chrome.tabGroups.query({});
   for (const group of groups) {

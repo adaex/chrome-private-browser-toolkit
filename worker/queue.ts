@@ -1,6 +1,6 @@
 type Task = () => Promise<void | boolean>;
 
-class Queue {
+export class Queue {
   private queue: Task[] = [];
   private activeCount = 0;
 
@@ -23,5 +23,14 @@ class Queue {
   }
 }
 
-const noop = () => {};
-const timeout = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+export const noop = () => {};
+
+export const timeout = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export function catchError(context: string) {
+  return (error: unknown) => {
+    console.error(`[${new Date().toISOString()}] Error in ${context}:`, error);
+  };
+}
+
+export const queue = new Queue(1);
