@@ -20,7 +20,7 @@ const COLOR_ICON_MAP: Record<string, string> = {
 };
 
 // 状态
-export const folderMapping = new Map<number, string>();
+export const FolderMapping = new Map<number, string>();
 
 // 查找或创建根文件夹
 async function _getOrCreateRootFolder(tree: BookmarkNode[]) {
@@ -39,7 +39,7 @@ async function _getAndSyncGroupFolder(tree: BookmarkNode[], group: TabGroup) {
   // 使用分组名称作为文件夹名
   const icon = COLOR_ICON_MAP[group.color] ?? '';
   const title = `${icon}${group.title}`;
-  const folderId = folderMapping.get(group.id);
+  const folderId = FolderMapping.get(group.id);
 
   const folder = folderId
     ? rootFolder.children?.find(folder => folder.id === folderId)
@@ -48,13 +48,13 @@ async function _getAndSyncGroupFolder(tree: BookmarkNode[], group: TabGroup) {
   // 如果文件夹不存在，创建它
   if (!folder) {
     const newFolder = await chrome.bookmarks.create({ parentId: rootFolder.id, title });
-    folderMapping.set(group.id, newFolder.id);
+    FolderMapping.set(group.id, newFolder.id);
     return newFolder;
   }
 
   // 更新映射关系
   if (folderId !== folder.id) {
-    folderMapping.set(group.id, folder.id);
+    FolderMapping.set(group.id, folder.id);
   }
 
   // 更新文件夹名称
@@ -89,7 +89,9 @@ async function _syncGroupBookmarks(groupFolder: BookmarkNode, tabs: Tab[]) {
       }
       bookmarkIdSet.add(existingBookmark.id);
     } else {
-      await chrome.bookmarks.create({ parentId: groupFolder.id, title: tab.title || url, url, index }).catch(catchError('bookmarks.create'));
+      await chrome.bookmarks
+        .create({ parentId: groupFolder.id, title: tab.title || url, url, index })
+        .catch(catchError('bookmarks.create'));
     }
   }
 

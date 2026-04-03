@@ -1,6 +1,6 @@
+import { FolderMapping, initUpdateAllGroupFolder, updateGroupAndBookmarks } from './bookmarks.js';
 import { queue } from './queue.js';
 import { checkDuplicate, toFullscreenWindow } from './tabs.js';
-import { folderMapping, updateGroupAndBookmarks, initUpdateAllGroupFolder } from './bookmarks.js';
 
 chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
@@ -37,7 +37,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 chrome.tabGroups.onRemoved.addListener(group => {
-  queue.run(async () => folderMapping.delete(group.id));
+  queue.run(async () => FolderMapping.delete(group.id));
 });
 
 chrome.tabGroups.onUpdated.addListener(group => {
