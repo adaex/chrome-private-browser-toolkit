@@ -16,11 +16,6 @@
 - **颜色标识**：使用 emoji 图标标识不同颜色的标签组
 - **实时更新**：标签组变化时自动更新对应的书签文件夹
 
-### 🎨 网站样式优化
-
-- **GitHub Copilot**：在小屏幕下隐藏顶部导航栏
-- **腾讯元宝**：在小屏幕下隐藏下载按钮和导航下载区域
-
 ## 安装方式
 
 1. 克隆项目到本地：
@@ -53,13 +48,13 @@
 ### 开发模式
 
 ```bash
-npm run dev
+yarn dev
 ```
 
 ### 构建生产版本
 
 ```bash
-npm run build
+yarn build
 ```
 
 ## 项目结构
@@ -69,14 +64,11 @@ npm run build
 ├── package.json           # 项目配置
 ├── tsconfig.json          # TypeScript 配置
 ├── icon/                  # 扩展图标
-├── style/                 # 内容脚本样式
-│   ├── github-copilot.css
-│   └── yuanbao.css
 └── worker/                # Service Worker 脚本
-    ├── 0-utils.ts         # 工具函数和队列管理
-    ├── 1-start.ts         # 事件监听器和主逻辑
-    ├── 10-tabs.ts         # 标签页重复检测和管理
-    └── 11-bookmarks.ts    # 标签组书签同步
+    ├── queue.ts           # 并发队列实现
+    ├── tabs.ts            # 标签页管理（重复检测、全屏窗口）
+    ├── bookmarks.ts       # 标签组书签同步
+    └── index.ts           # 入口文件、事件监听器
 ```
 
 ## 权限说明
@@ -88,8 +80,8 @@ npm run build
 ## 技术栈
 
 - **TypeScript**：类型安全的开发体验
-- **Chrome Extensions API**：使用 Manifest V3
-- **并发控制**：使用队列管理异步操作
+- **ES Modules**：现代模块化架构
+- **Chrome Extensions API**：Manifest V3
 
 ## 贡献
 
