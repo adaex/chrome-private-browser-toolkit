@@ -4,6 +4,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "types": ["chrome"],
     "outDir": "dist",
     "rootDir": ".",
     "pretty": true,

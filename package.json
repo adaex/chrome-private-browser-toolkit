@@ -3,10 +3,11 @@
     "dev": "tsc -w",
     "build": "npm run clean && npm run copy && tsc",
     "clean": "rm -rf dist",
-    "copy": "mkdir -p dist && cp -r manifest.json icon dist"
+    "copy": "mkdir -p dist && cp -r manifest.json icon dist",
+    "release": "npm run build && cd dist && zip -r ../extension.zip . && cd .. && echo 'Created extension.zip for upload'"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.323",
-    "typescript": "^5.8.3"
+    "@types/chrome": "^0.1.39",
+    "typescript": "^6.0.2"
   }
 }

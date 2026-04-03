@@ -1,4 +1,4 @@
-import { queue, catchError } from './queue.js';
+import { catchError } from './queue.js';
 
 // 监听 tab 的创建和更新事件，检查是否有重复的 tab
 export async function checkDuplicate(tabId: number) {
