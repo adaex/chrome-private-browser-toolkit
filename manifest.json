@@ -9,7 +9,7 @@
     "512": "icon/icon_512.png"
   },
   "background": {
-    "service_worker": "worker.js",
+    "service_worker": "worker/index.js",
     "type": "module"
   },
   "content_scripts": []

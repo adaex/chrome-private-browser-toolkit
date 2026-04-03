@@ -2,7 +2,10 @@
   "compilerOptions": {
     "strict": true,
     "target": "ESNext",
-    "outFile": "dist/worker.js",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "dist",
+    "rootDir": ".",
     "pretty": true,
     "removeComments": true
   },
