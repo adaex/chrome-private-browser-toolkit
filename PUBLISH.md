@@ -301,7 +301,8 @@ yarn release
 
 1. 修改 `manifest.json` 中的 `version`（如 0.1.1）
 2. 运行 `yarn release` 构建新的 zip 包
-3. 在开发者控制台找到该扩展
+3. 打开 devconsole 直达链接（已发布版本）：
+   https://chrome.google.com/u/1/webstore/devconsole/27bf1380-10a4-4673-a253-0da100617e74/gnpaolggdcljndfmfealhoefoopkghch/edit/package
 4. 上传新的 zip 包
 5. 更新描述（如有需要）
 6. 提交审核（更新审核通常更快）
