@@ -94,3 +94,12 @@ export const FolderMapping = new Map<number, string>();  // groupId → bookmark
 
 1. 在 `chrome://extensions/` 加载 `dist/` 目录后，点击 Service Worker 的 "Service Worker" 链接可查看 console 日志
 2. TypeScript 使用 ESM 导入（`.js` 后缀），如 `import { catchError } from './queue.js';`
+
+---
+
+## 发布更新
+
+1. 修改 `manifest.json` 中的 `version`
+2. `yarn release` 生成 `extension.zip`
+3. 打开 devconsole 上传页，拖入 zip，提交审核：
+   https://chrome.google.com/u/1/webstore/devconsole/27bf1380-10a4-4673-a253-0da100617e74/gnpaolggdcljndfmfealhoefoopkghch/edit/package
