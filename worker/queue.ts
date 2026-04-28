@@ -15,10 +15,12 @@ export class Queue {
     while (this.activeCount < this.concurrency && this.queue.length > 0) {
       const task = this.queue.shift()!;
       this.activeCount++;
-      task().finally(() => {
-        this.activeCount--;
-        this.tryToExecuteNext();
-      });
+      task()
+        .catch(catchError('queue'))
+        .finally(() => {
+          this.activeCount--;
+          this.tryToExecuteNext();
+        });
     }
   }
 }

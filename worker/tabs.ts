@@ -13,7 +13,7 @@ export async function checkDuplicate(tabId: number) {
   if (!tab?.id) return;
 
   // 获取已存在的 tab
-  const existedTab = url ? tabs.find(tab => tab.id !== tabId && tab.url === url) : undefined;
+  const existedTab = url ? tabs.find(tab => tab.id !== tabId && (tab.pendingUrl || tab.url) === url) : undefined;
 
   // 目标不存在，直接忽略
   if (!existedTab?.id) return;
@@ -31,7 +31,6 @@ export async function checkDuplicate(tabId: number) {
     if (existedTab.groupId < 0) {
       // 新的 tab 在组里，老的 tab 不在组里，需要把老的 tab 移动到新的 tab 所在的组里
       await chrome.tabs.group({ tabIds: existedTab.id, groupId: tab.groupId }).catch(catchError('tabs.group'));
-      await chrome.tabs.move(existedTab.id, { index: tab.index }).catch(catchError('tabs.move'));
     }
   }
 

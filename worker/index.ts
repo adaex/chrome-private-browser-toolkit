@@ -24,7 +24,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     queue.run(() => checkDuplicate(tabId));
   }
 
-  if (tab.groupId > -1) {
+  if (tab.groupId > 0) {
     // 页面加载完成，这时候一定有了 title
     if (changeInfo.status === 'complete') {
       queue.run(() => updateGroupAndBookmarks(tab.groupId));
