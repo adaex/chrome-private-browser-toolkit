@@ -99,6 +99,15 @@ interface GroupSnapshot {
 
 ---
 
+## 设计决策（有意为之，勿当 bug 修）
+
+- **最小 API 调用优先**: 刻意不为防御性校验增加额外 Chrome API 调用。例如 `checkDuplicate` 开头取一次标签快照后一路 await，快照可能过期，但**不补 `tabs.get` 二次核对**——竞态窗口极小且 `catchError` 已兜底，最坏只是一条日志
+- **相同 URL 去重是核心功能**: `checkDuplicate` 只要 URL 完全相同就激活旧标签、关闭新标签。"无法并排开两个相同网址"是预期行为，非缺陷
+- **新窗口吸附全屏窗口**: `toFullscreenWindow` 会把 `!openerTabId && index===0` 的新普通窗口移进已有全屏窗口，Ctrl+N / 命令行开链接也会被吸附，属预期
+- **`chrome://new` 关旧标签不查 pinned**: 打开新标签页时直接关掉重复的旧标签，未特判 pinned，属可接受的取舍
+
+---
+
 ## 开发提示
 
 1. 在 `chrome://extensions/` 加载 `dist/` 目录后，点击 Service Worker 的 "Service Worker" 链接可查看 console 日志
