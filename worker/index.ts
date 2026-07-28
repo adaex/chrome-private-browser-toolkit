@@ -1,4 +1,4 @@
-import { FolderMapping, initUpdateAllGroupFolder, updateGroupAndBookmarks } from './bookmarks.js';
+import { archiveGroup, backupGroup, initBackupAllGroups } from './backup.js';
 import { queue } from './queue.js';
 import { checkDuplicate, toFullscreenWindow } from './tabs.js';
 
@@ -27,24 +27,25 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab.groupId > 0) {
     // 页面加载完成，这时候一定有了 title
     if (changeInfo.status === 'complete') {
-      queue.run(() => updateGroupAndBookmarks(tab.groupId));
+      queue.run(() => backupGroup(tab.groupId));
     }
     // 已经打开的标签，加入组
     else if (changeInfo.groupId && tab.status === 'complete') {
-      queue.run(() => updateGroupAndBookmarks(tab.groupId));
+      queue.run(() => backupGroup(tab.groupId));
     }
   }
 });
 
 chrome.tabGroups.onRemoved.addListener(group => {
-  queue.run(async () => FolderMapping.delete(group.id));
+  // 组被删除时归档快照，误删可从 archived 找回
+  queue.run(() => archiveGroup(group.id));
 });
 
 chrome.tabGroups.onUpdated.addListener(group => {
   if (!group.title) return;
 
   // 一般是修改名称和颜色、折叠等
-  queue.run(() => updateGroupAndBookmarks(group));
+  queue.run(() => backupGroup(group));
 });
 
-queue.run(() => initUpdateAllGroupFolder());
+queue.run(() => initBackupAllGroups());

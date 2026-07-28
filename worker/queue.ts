@@ -25,10 +25,6 @@ export class Queue {
   }
 }
 
-export const noop = () => {};
-
-export const timeout = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 export function catchError(context: string) {
   return (error: unknown) => {
     console.error(`[${new Date().toISOString()}] Error in ${context}:`, error);
