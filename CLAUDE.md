@@ -108,7 +108,20 @@ interface GroupSnapshot {
 
 ## 发布更新
 
-1. 修改 `manifest.json` 中的 `version`
+1. 修改 `manifest.json` 中的 `version`（**必须升号**，与线上版本重复会被商店拒绝）
 2. `yarn release` 生成 `extension.zip`
 3. 打开 devconsole 上传页，拖入 zip，提交审核：
    https://chrome.google.com/u/1/webstore/devconsole/27bf1380-10a4-4673-a253-0da100617e74/gnpaolggdcljndfmfealhoefoopkghch/edit/package
+
+### 坑与必填项
+
+- **新增权限必须在「隐私权规范」标签页填使用理由**，否则报"无法发布"。改动 `permissions` 后务必检查此页
+- 本扩展**不收集/不传输任何数据**（纯本地 storage，无 fetch/XHR）→ 数据用途声明勾"不收集用户数据"，并勾选三条合规声明（不出售、不用于无关用途、不用于判定信用）
+- 填完权限理由后需先**保存草稿**再重新提交审核
+
+### 可复用文案（权限理由 / 单一用途）
+
+- **storage**：用于将标签组（组名、颜色及组内标签的网址与标题）以快照形式保存到 `chrome.storage.local` 作为本地备份，便于标签组被误删后找回。数据仅存于本机，不上传、不共享
+- **tabs**：用于查询和管理标签页，检测并合并重复网址标签，并读取标签所属分组以生成本地备份
+- **tabGroups**：用于读取标签组的名称、颜色及成员标签，在标签组变化或被删除时生成本地备份快照
+- **单一用途**：增强 Chrome 标签页与标签组管理——自动合并重复标签、整合全屏窗口，并将标签组自动备份到本地以防误删
