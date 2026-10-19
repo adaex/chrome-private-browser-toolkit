@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "Private Browser Toolkit",
   "description": "A private browser toolkit for chrome.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "action": {},
-  "permissions": ["tabs", "tabGroups", "storage"],
+  "permissions": ["tabs", "tabGroups", "storage", "unlimitedStorage"],
   "icons": {
     "16": "icon/icon_16.png",
     "32": "icon/icon_32.png",

@@ -1,4 +1,5 @@
-type Task = () => Promise<void | boolean>;
+// 队列不关心任务返回值（checkDuplicate 的 boolean 等），Promise<unknown> 让调用点不必套空壳 async
+type Task = () => Promise<unknown>;
 
 export class Queue {
   private queue: Task[] = [];
