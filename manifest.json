@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Private Browser Toolkit",
-  "description": "A private browser toolkit for chrome.",
+  "description": "自动合并重复标签、整合全屏窗口，并在本地备份标签组；所有数据仅保存在浏览器中。",
   "version": "0.4.0",
   "action": {},
   "options_page": "options.html",
