@@ -60,6 +60,15 @@ export function noteGroupObject(group: chrome.tabGroups.TabGroup) {
   groupObjectCache.set(group.id, group);
 }
 
+// 以实时组列表同步缓存：预热存活组，并清掉漏发 onRemoved 的旧对象
+export function syncGroupObjects(groups: chrome.tabGroups.TabGroup[]) {
+  const liveIds = new Set(groups.map(group => group.id));
+  for (const groupId of groupObjectCache.keys()) {
+    if (!liveIds.has(groupId)) groupObjectCache.delete(groupId);
+  }
+  for (const group of groups) noteGroupObject(group);
+}
+
 export function forgetGroupObject(groupId: number) {
   groupObjectCache.delete(groupId);
 }

@@ -1,4 +1,4 @@
-import { noteGroupObject, resolveGroupObject } from './groupCache.js';
+import { noteGroupObject, resolveGroupObject, syncGroupObjects } from './groupCache.js';
 import { effectiveUrl } from './tabs.js';
 
 // 类型定义
@@ -21,7 +21,7 @@ interface GroupSnapshot {
 // v2 存储布局：拆 key，单次备份只写一个小组快照，不再全量重写
 //   tabg:meta                     -> { lastInitAt }
 //   tabg:g:<groupId>              -> 存活组的快照，每组一个 key；键集合本身就是存活组真相
-//   tabg:a:<groupId>:<删除毫秒时间戳> -> 已删除组的归档，只增不删，恢复靠人工读 JSON
+//   tabg:a:<groupId>:<删除毫秒时间戳>:<随机ID> -> 已删除组的归档，只增不删，恢复靠人工读 JSON
 const META_KEY = 'tabg:meta';
 export const ACTIVE_PREFIX = 'tabg:g:';
 export const ARCHIVE_PREFIX = 'tabg:a:';
@@ -30,7 +30,7 @@ const INIT_THROTTLE_MS = 5 * 60 * 1000; // SW 频繁重启，全量 init 5 分�
 
 const activeKey = (groupId: number) => `${ACTIVE_PREFIX}${groupId}`;
 const archiveKey = (groupId: number, deletedAtMs: number) =>
-  `${ARCHIVE_PREFIX}${groupId}:${deletedAtMs}`;
+  `${ARCHIVE_PREFIX}${groupId}:${deletedAtMs}:${crypto.randomUUID()}`;
 
 async function readLastInitAt(): Promise<number> {
   const result = await chrome.storage.local.get(META_KEY);
@@ -96,15 +96,20 @@ function snapshotGroup(group: TabGroup, tabs: chrome.tabs.Tab[], updatedAt: stri
 }
 
 // 备份单个标签组：只写这一个组的 key，不读不写其他数据
-export async function backupGroup(groupId: number) {
+// 普通快照遇到空组可保留旧快照，等随后的 onRemoved 归档；明确空组事件仍删除 active
+export async function backupGroup(groupId: number, preserveEmpty = false) {
   // 先查标签：组已删除时统一按空组处理，缓存命中与否不再改变归档结果
   const tabs = await chrome.tabs.query({ groupId });
   if (!tabs.length) {
-    await chrome.storage.local.remove(activeKey(groupId));
+    if (!preserveEmpty) await chrome.storage.local.remove(activeKey(groupId));
     return;
   }
 
-  const group = resolveGroupObject(groupId) ?? (await chrome.tabGroups.get(groupId));
+  let group = resolveGroupObject(groupId);
+  if (!group) {
+    group = await chrome.tabGroups.get(groupId);
+    noteGroupObject(group);
+  }
   await chrome.storage.local.set({
     [activeKey(groupId)]: snapshotGroup(group, tabs, new Date().toISOString()),
   });
@@ -218,9 +223,10 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
     }
   }
 
+  syncGroupObjects(groups);
+
   const now = new Date().toISOString();
   for (const group of groups) {
-    noteGroupObject(group); // 顺手预热组对象缓存
     const tabs = tabsByGroup.get(group.id);
     // 与 backupGroup 同一 upsert 语义：存活但为空（正常会被 Chrome 立即删组）不保留旧键
     if (!tabs || !tabs.length) {

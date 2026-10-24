@@ -79,13 +79,13 @@ export const queue = new Queue(1);  // 并发数 = 1，确保 Chrome API 串行�
 ```
 tabg:meta                     { lastInitAt }，仅做 5 分钟节流
 tabg:g:<groupId>              存活组快照，每组一个 key；**键集合本身就是存活组真相**，不另存索引
-tabg:a:<groupId>:<删除时间戳ms>  已删除组归档，只增不删、无条数上限
+tabg:a:<groupId>:<删除时间戳ms>:<随机ID>  已删除组归档，只增不删、无条数上限
 ```
 
 | 函数 | 作用 |
 |------|------|
-| `backupGroup(groupId)` | **先读该组全部标签**，空组统一删掉 active key，缓存命中与否不影响结果；非空才读取组对象（先查缓存、miss 才 `tabGroups.get`），只 set 这一个组的 key。空组马上会被 Chrome 自动删除并触发归档，清掉 active 可避免把刚关掉/拖走的最后一个标签留进归档 |
-| `archiveGroup(groupId)` | 组被删除时，把 `tabg:g:<id>` 写成 `tabg:a:<id>:<ms>`（打 deletedAt）再删掉 active key；无快照则无事可做 |
+| `backupGroup(groupId, preserveEmpty)` | **先读该组全部标签**，非空才读取组对象（先查缓存、miss 才 `tabGroups.get` 并写入缓存），只 set 这一个组的 key。普通 complete/组更新快照用 `preserveEmpty=true`，空组时保留 active 等随后的 `onRemoved` 归档，避免排队竞态抢删；关闭、拖出、离组等明确空组事件仍删掉 active，避免把刚关掉/拖走的最后一个标签留进归档 |
+| `archiveGroup(groupId)` | 组被删除时，把 `tabg:g:<id>` 写成 `tabg:a:<id>:<ms>:<随机ID>`（打 deletedAt）再删掉 active key；无快照则无事可做 |
 | `initBackupAllGroups(allTabs, force)` | 缓存由调用方重建；5 分钟节流（force 跳过）；JS 内按 groupId 聚合；刷新存活组；存储里有但实时已不存在的组**移入归档**（漏删事件兜底，绝不硬删）；v1 数据首次发现时迁移；**先写归档/迁移再删旧 key**，写失败保留原数据 |
 
 **数据结构**:
