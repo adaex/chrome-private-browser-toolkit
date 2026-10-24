@@ -79,13 +79,13 @@ export const queue = new Queue(1);  // 并发数 = 1，确保 Chrome API 串行�
 ```
 tabg:meta                     { lastInitAt }，仅做 5 分钟节流
 tabg:g:<groupId>              存活组快照，每组一个 key；**键集合本身就是存活组真相**，不另存索引
-tabg:a:<groupId>:<删除时间戳ms>  已删除组归档，只增不删、无条数上限
+tabg:a:<groupId>:<删除时间戳ms>:<随机ID>  已删除组归档，只增不删、无条数上限
 ```
 
 | 函数 | 作用 |
 |------|------|
-| `backupGroup(groupId)` | **先读该组全部标签**，空组统一删掉 active key，缓存命中与否不影响结果；非空才读取组对象（先查缓存、miss 才 `tabGroups.get`），只 set 这一个组的 key。空组马上会被 Chrome 自动删除并触发归档，清掉 active 可避免把刚关掉/拖走的最后一个标签留进归档 |
-| `archiveGroup(groupId)` | 组被删除时，把 `tabg:g:<id>` 写成 `tabg:a:<id>:<ms>`（打 deletedAt）再删掉 active key；无快照则无事可做 |
+| `backupGroup(groupId, preserveEmpty)` | **先读该组全部标签**，非空才读取组对象（先查缓存、miss 才 `tabGroups.get` 并写入缓存），只 set 这一个组的 key。普通 complete/组更新快照用 `preserveEmpty=true`，空组时保留 active 等随后的 `onRemoved` 归档，避免排队竞态抢删；关闭、拖出、离组等明确空组事件仍删掉 active，避免把刚关掉/拖走的最后一个标签留进归档 |
+| `archiveGroup(groupId)` | 组被删除时，把 `tabg:g:<id>` 写成 `tabg:a:<id>:<ms>:<随机ID>`（打 deletedAt）再删掉 active key；无快照则无事可做 |
 | `initBackupAllGroups(allTabs, force)` | 缓存由调用方重建；5 分钟节流（force 跳过）；JS 内按 groupId 聚合；刷新存活组；存储里有但实时已不存在的组**移入归档**（漏删事件兜底，绝不硬删）；v1 数据首次发现时迁移；**先写归档/迁移再删旧 key**，写失败保留原数据 |
 
 **数据结构**:
@@ -137,12 +137,15 @@ interface GroupSnapshot {
 
 ## 发布更新
 
+商店网页操作固定使用 **CDP + Playwright**：先检查 `http://127.0.0.1:9222/json/version`；若 CDP 未启动，直接执行 `chrome cdp`（使用独立 `Chrome CDP` profile，复用本机 9222 端口和其中的登录态）。随后用 `playwright.chromium.connectOverCDP('http://127.0.0.1:9222')` 连接并操作网页，不要另开无登录态的浏览器
+
 1. 修改 `manifest.json` 中的 `version`（**必须升号**，与线上版本重复会被商店拒绝）
 2. `yarn release` 生成 `extension.zip`
-3. 打开 devconsole 上传页，拖入 zip：
+3. 用 Playwright 打开 devconsole 上传页，通过文件控件上传 `extension.zip`：
    https://chrome.google.com/u/1/webstore/devconsole/27bf1380-10a4-4673-a253-0da100617e74/gnpaolggdcljndfmfealhoefoopkghch/edit/package
 4. 检查「隐私权规范」（新权限理由、数据使用、合规声明）和「商品详情」说明，各页**保存草稿**
 5. 「提请审核」变蓝后提交，确认框勾选"通过审核后自动发布"
+6. 提交后重新读取「状态」和「文件包」页，确认新草稿版本处于「待审核」；审核通过自动发布，不把「已送审」当成「已上线」
 
 ### 坑与必填项
 
@@ -150,6 +153,7 @@ interface GroupSnapshot {
 - **商店文案要与当前功能/manifest 对齐**：发版前通读「商品详情 → 说明」和「隐私权规范 → 单一用途」，删掉已移除能力的描述。0.3.0 移除 bookmarks API 后，两处仍写着"书签同步/bookmarks API"，与 manifest 不符可能被以描述不实打回
 - 本扩展**不收集/不传输任何数据**（纯本地 storage，无 fetch/XHR）→ 数据使用类别一项都不勾（即"不收集用户数据"），并勾选三条合规声明（不出售、不用于无关用途、不用于判定信用）；不收集数据时隐私政策 URL 可留空
 - 各标签页改完先**保存草稿**，右上角「提请审核」变蓝后再提交；提交确认框里勾选"通过审核后自动发布"可免过审后二次操作
+- **审核中的版本不能修改或替换**：上传按钮会被商店禁用；若新版本必须取而代之，先取得用户确认，再从更多菜单取消当前审核，刷新确认恢复草稿后再上传。不要强行修改 disabled 或绕过商店限制
 
 ### 可复用文案（权限理由 / 单一用途）
 

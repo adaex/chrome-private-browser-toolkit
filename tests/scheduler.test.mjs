@@ -48,12 +48,19 @@ test('备份按组合并、纯折叠不重写，功能开关无需重启即可�
   assert.equal(local.writes.length, 1);
   assert.equal(local.data['tabg:g:1'].tabs[0].title, '标题二');
 
-  listeners.groupUpdated(group);
+  const renamedGroup = { ...group, title: '新组名' };
+  listeners.groupUpdated(renamedGroup);
   await flush();
   assert.equal(local.writes.length, 2);
-  listeners.groupUpdated({ ...group, collapsed: true });
+  listeners.groupUpdated({ ...renamedGroup, collapsed: true });
   await flush();
   assert.equal(local.writes.length, 2);
+
+  tab = { ...tab, title: '' };
+  listeners.updated(tab.id, { title: '' }, tab);
+  await flush();
+  assert.equal(local.data['tabg:g:1'].tabs[0].title, '');
+  assert.equal(local.writes.length, 3);
 
   local.data.featureSettings = { deduplicate: false, fullscreen: true };
   listeners.updated(tab.id, { url: 'https://example.com/next' }, { ...tab, url: 'https://example.com/next' });

@@ -14,15 +14,22 @@ import { loadFeatureSettings } from './settings.js';
 import { checkDuplicate, toFullscreenWindow } from './tabs.js';
 
 // 同组只保留一个待执行备份；执行期间又来了事件，可再排一个尾随备份读取最新状态
-const pendingGroupBackups = new Set<number>();
-function scheduleBackup(groupId: number | undefined) {
-  if (!groupId || groupId <= 0 || pendingGroupBackups.has(groupId)) return;
-  pendingGroupBackups.add(groupId);
+// value 表示空组时是否保留旧快照；明确的关闭/拖出/离组事件会把待执行任务升级为清理语义
+const pendingGroupBackups = new Map<number, boolean>();
+function scheduleBackup(groupId: number | undefined, preserveEmpty = false) {
+  if (!groupId || groupId <= 0) return;
+  const pending = pendingGroupBackups.get(groupId);
+  if (pending !== undefined) {
+    if (!preserveEmpty) pendingGroupBackups.set(groupId, false);
+    return;
+  }
+  pendingGroupBackups.set(groupId, preserveEmpty);
   queue.run(async () => {
     // 让同一轮同步事件先完成合并，例如 complete 与 groupId 同时变化
     await Promise.resolve();
+    const keepEmptySnapshot = pendingGroupBackups.get(groupId)!;
     pendingGroupBackups.delete(groupId);
-    await backupGroup(groupId);
+    await backupGroup(groupId, keepEmptySnapshot);
   });
 }
 
@@ -62,8 +69,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 
   // complete 时一定有了 title；complete 之后标题再变（SPA 改 document.title 等）也要追上
-  if (changeInfo.status === 'complete' || (changeInfo.title && tab.status === 'complete')) {
-    scheduleBackup(tab.groupId);
+  if (changeInfo.status === 'complete' || (changeInfo.title != null && tab.status === 'complete')) {
+    scheduleBackup(tab.groupId, true);
   }
 
   // 入组、离组、跨组移动：新组要拍，旧组少了标签也要拍（独立分支，不与上面互斥）
@@ -92,7 +99,7 @@ chrome.tabGroups.onUpdated.addListener(group => {
 
   // 快照不保存 collapsed，纯折叠/展开无需重写；缓存 miss 时保守拍一次
   if (!previous || previous.title !== group.title || previous.color !== group.color) {
-    scheduleBackup(group.id);
+    scheduleBackup(group.id, true);
   }
 });
 
