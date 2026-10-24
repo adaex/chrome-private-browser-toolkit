@@ -57,7 +57,8 @@ export async function checkDuplicate(tabId: number): Promise<boolean> {
 }
 
 // 候选处理优先级（数值越小越优先）。等级与上面的特判分支是同一套规则：
-// SAME    同组 / 同窗：直接激活，或同窗可并入新组
+// SAME    同组，或新标签未分组时的同窗候选：直接激活
+// MERGE   新标签在组内，同窗未分组旧标签可并入该组
 // CROSS   跨窗未分组：可聚焦另一窗口激活
 // SKIP    pinned / 在别组：特判分支会保留重复，必须垫底，否则会挡住跨窗可用目标
 const PREFERENCE = {
@@ -87,7 +88,9 @@ export async function toFullscreenWindow(tabId: number, windowId: number) {
     chrome.windows.getAll(),
     chrome.windows.get(windowId, { populate: true }),
   ]);
-  const fullscreenWindow = windows.find(window => window.state === 'fullscreen' && window.type === 'normal');
+  const fullscreenWindows = windows.filter(window => window.state === 'fullscreen' && window.type === 'normal');
+  // 多个全屏窗口时无法判断用户想去哪个，宁可不移动
+  const fullscreenWindow = fullscreenWindows.length === 1 ? fullscreenWindows[0] : undefined;
 
   // index === 0 不等于新窗口；源窗口必须仍只有当前这一个标签，避免拆散已有多标签窗口
   if (

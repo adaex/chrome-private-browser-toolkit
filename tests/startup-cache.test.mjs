@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createEventRegistry, createStorage, flush } from './helpers.mjs';
+import { createEventRegistry, createProxyIndicatorMock, createStorage, flush } from './helpers.mjs';
 
 test('onCreated 写入的归属不会被稍晚返回的启动旧快照清掉', async () => {
   const { listeners, event } = createEventRegistry();
@@ -10,7 +10,7 @@ test('onCreated 写入的归属不会被稍晚返回的启动旧快照清掉', a
   const initialQuery = new Promise(resolve => { resolveInitial = resolve; });
   const local = createStorage({ 'tabg:meta': { lastInitAt: Date.now() } });
   globalThis.chrome = {
-    action: { onClicked: event('action') },
+    ...createProxyIndicatorMock(),
     tabs: {
       async query() {
         if (firstQuery) {

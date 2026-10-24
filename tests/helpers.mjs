@@ -42,6 +42,26 @@ export function createEventRegistry() {
   };
 }
 
+export function createProxyIndicatorMock() {
+  return {
+    action: {
+      async setIcon() {},
+      async setTitle() {},
+    },
+    proxy: {
+      settings: {
+        onChange: { addListener() {} },
+        async get() {
+          return {
+            value: { mode: 'direct' },
+            levelOfControl: 'controlled_by_this_extension',
+          };
+        },
+      },
+    },
+  };
+}
+
 export function flush() {
   return new Promise(resolve => setImmediate(resolve));
 }

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Private Browser Toolkit</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      body {
+        width: 320px;
+      }
+
+      .popup {
+        padding: 17px;
+      }
+
+      .popup-header,
+      .brand,
+      .popup-footer a {
+        display: flex;
+        align-items: center;
+      }
+
+      .popup-header {
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+
+      .brand {
+        gap: 9px;
+      }
+
+      .brand img {
+        width: 25px;
+        height: 25px;
+      }
+
+      .brand strong {
+        font-size: 15px;
+        letter-spacing: -0.01em;
+      }
+
+      .settings-link {
+        padding: 4px 0 4px 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .settings-link:hover,
+      .popup-footer a:hover {
+        color: var(--accent);
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .proxy-options {
+        display: grid;
+        gap: 9px;
+      }
+
+      .proxy-option {
+        display: flex;
+        min-height: 66px;
+        align-items: center;
+        gap: 11px;
+        padding: 11px 13px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+        cursor: pointer;
+        transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+      }
+
+      .proxy-option:hover {
+        border-color: #bdc9d5;
+      }
+
+      .proxy-option:has(input:checked) {
+        border-color: #28aec3;
+        background: var(--accent-soft);
+        box-shadow: 0 0 0 1px rgb(40 174 195 / 12%);
+      }
+
+      .proxy-option:has(input[value="socks5"]:checked) {
+        border-color: #ef8a78;
+        background: #fff5f2;
+        box-shadow: 0 0 0 1px rgb(239 102 85 / 12%);
+      }
+
+      .proxy-option:has(input:disabled) {
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+
+      .proxy-option input {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        margin: 0;
+        accent-color: var(--accent);
+      }
+
+      .proxy-option:has(input[value="socks5"]) input {
+        accent-color: #e76551;
+      }
+
+      .option-copy {
+        display: grid;
+        flex: 1;
+        gap: 2px;
+      }
+
+      .option-copy strong {
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .option-copy small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .scope-note {
+        margin: 5px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .popup-footer {
+        margin-top: 15px;
+        padding-top: 13px;
+        border-top: 1px solid var(--border);
+      }
+
+      .popup-footer a {
+        justify-content: space-between;
+        min-height: 28px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup-header">
+        <div class="brand">
+          <img src="icon/icon_32.png" alt="" />
+          <strong>Private Toolkit</strong>
+        </div>
+        <a class="settings-link" href="options.html" target="_blank" rel="noopener">设置</a>
+      </header>
+
+      <section aria-labelledby="proxy-heading">
+        <h2 id="proxy-heading">网络代理</h2>
+        <div class="proxy-options" role="radiogroup" aria-label="网络代理模式">
+          <label class="proxy-option">
+            <input type="radio" name="proxy-mode" value="direct" disabled />
+            <span class="option-copy">
+              <strong>直连</strong>
+              <small>不通过代理访问</small>
+            </span>
+          </label>
+          <label class="proxy-option">
+            <input type="radio" name="proxy-mode" value="socks5" disabled />
+            <span class="option-copy">
+              <strong>本机 SOCKS5</strong>
+              <small id="socks-endpoint">127.0.0.1:7890</small>
+            </span>
+          </label>
+        </div>
+        <p id="proxy-status" class="status" role="status" aria-live="polite">正在读取当前代理…</p>
+        <p class="scope-note">对整个 Chrome 配置文件生效</p>
+      </section>
+
+      <footer class="popup-footer">
+        <a href="options.html#backups" target="_blank" rel="noopener">
+          <span>标签组备份</span><span aria-hidden="true">→</span>
+        </a>
+      </footer>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

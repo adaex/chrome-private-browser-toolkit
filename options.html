@@ -3,67 +3,286 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
     <title>Private Browser Toolkit</title>
+    <link rel="stylesheet" href="ui.css" />
     <style>
-      body {
-        max-width: 860px;
-        margin: 32px auto;
-        padding: 0 20px;
-        color: #202124;
-        font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      .options-shell {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 36px 24px 48px;
       }
-      section {
-        margin-top: 24px;
+
+      .options-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 26px;
       }
-      label {
-        display: block;
-        margin: 10px 0;
+
+      .options-header img {
+        width: 46px;
+        height: 46px;
       }
-      input {
-        margin-right: 8px;
+
+      h1,
+      h2,
+      p {
+        margin-top: 0;
       }
-      button {
-        margin-right: 8px;
-        padding: 6px 12px;
+
+      h1 {
+        margin-bottom: 3px;
+        font-size: 21px;
+        letter-spacing: -0.02em;
       }
+
+      h2 {
+        margin-bottom: 0;
+        font-size: 16px;
+      }
+
+      .options-header p,
+      .section-description {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+
+      .options-header p {
+        font-size: 13px;
+      }
+
+      .card {
+        margin-top: 16px;
+        padding: 22px;
+        border: 1px solid var(--border);
+        border-radius: 15px;
+        background: var(--surface);
+        box-shadow: 0 2px 8px rgb(31 45 61 / 3%);
+        scroll-margin-top: 20px;
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 7px;
+      }
+
+      .section-description {
+        font-size: 13px;
+      }
+
+      .proxy-form {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) minmax(130px, 160px) auto;
+        align-items: end;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .field input {
+        width: 100%;
+        min-height: 38px;
+        padding: 8px 11px;
+        border: 1px solid #cfd8e3;
+        border-radius: 9px;
+        background: var(--surface);
+        color: var(--text);
+      }
+
+      .field input:disabled {
+        background: #f3f5f8;
+        color: var(--muted);
+      }
+
+      .setting-list {
+        margin-top: 13px;
+      }
+
+      .setting-row {
+        display: flex;
+        min-height: 66px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        cursor: pointer;
+      }
+
+      .setting-row + .setting-row {
+        border-top: 1px solid var(--border);
+      }
+
+      .setting-copy {
+        display: grid;
+        gap: 3px;
+      }
+
+      .setting-copy strong {
+        font-weight: 600;
+      }
+
+      .setting-copy small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .switch {
+        position: relative;
+        width: 38px;
+        height: 22px;
+        flex: none;
+        margin: 0;
+        border-radius: 20px;
+        background: #bdc7d3;
+        cursor: pointer;
+        appearance: none;
+        transition: background 120ms ease;
+      }
+
+      .switch::after {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+        content: "";
+        transition: transform 120ms ease;
+      }
+
+      .switch:checked {
+        background: var(--accent);
+      }
+
+      .switch:checked::after {
+        transform: translateX(16px);
+      }
+
+      .backup-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      details {
+        margin-top: 12px;
+      }
+
+      summary {
+        width: fit-content;
+        padding: 4px 0;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 12px;
+      }
+
       pre {
-        max-height: 560px;
+        max-height: 520px;
+        margin: 10px 0 0;
         padding: 16px;
         overflow: auto;
-        border: 1px solid #dadce0;
-        border-radius: 6px;
-        background: #f8f9fa;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #f7f9fb;
+        font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
-      .muted {
-        color: #5f6368;
+
+      @media (max-width: 620px) {
+        .options-shell {
+          padding: 24px 16px 36px;
+        }
+
+        .proxy-form {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .proxy-form .button {
+          grid-column: 1 / -1;
+        }
       }
     </style>
   </head>
   <body>
-    <main>
-      <h1>Private Browser Toolkit</h1>
-      <section>
-        <h2>功能</h2>
-        <label>
-          <input id="deduplicate" type="checkbox" />
-          自动合并相同网址的标签页
-        </label>
-        <label>
-          <input id="fullscreen" type="checkbox" />
-          把新开的单标签普通窗口并入已有全屏窗口
-        </label>
-        <span id="feature-status" class="muted">更改立即生效</span>
+    <main class="options-shell">
+      <header class="options-header">
+        <img src="icon/icon_48.png" alt="" />
+        <div>
+          <h1>Private Browser Toolkit</h1>
+          <p>网络、标签页与本地备份</p>
+        </div>
+      </header>
+
+      <section class="card" id="proxy-settings">
+        <div class="section-heading">
+          <h2>网络代理</h2>
+        </div>
+        <p class="section-description">弹窗中的本机 SOCKS5 使用此地址；由 Toolkit 管理的代理会在保存后使用新端口</p>
+        <form id="proxy-form" class="proxy-form" autocomplete="off">
+          <label class="field">
+            地址
+            <input id="proxy-host" type="text" value="127.0.0.1" disabled />
+          </label>
+          <label class="field">
+            端口
+            <input id="proxy-port" type="number" min="1" max="65535" step="1" inputmode="numeric" required />
+          </label>
+          <button id="proxy-save" class="button primary" type="submit">保存</button>
+        </form>
+        <p id="proxy-status" class="status" role="status" aria-live="polite"></p>
       </section>
-      <section>
-        <h2>标签组备份</h2>
-        <p>
-          <button id="refresh" type="button">刷新</button>
-          <button id="export" type="button" disabled>导出 JSON</button>
-        </p>
-        <p id="backup-status" class="muted"></p>
-        <pre id="backup-output">正在读取…</pre>
+
+      <section class="card" id="features">
+        <div class="section-heading">
+          <h2>标签工具</h2>
+        </div>
+        <p class="section-description">自动化功能在后台运行，可按需关闭</p>
+        <div class="setting-list">
+          <label class="setting-row">
+            <span class="setting-copy">
+              <strong>自动合并相同网址的标签页</strong>
+              <small>激活已有标签，再关闭重复的新标签</small>
+            </span>
+            <input id="deduplicate" class="switch" type="checkbox" />
+          </label>
+          <label class="setting-row">
+            <span class="setting-copy">
+              <strong>把新窗口并入全屏窗口</strong>
+              <small>仅处理单标签普通窗口，且只有一个全屏候选</small>
+            </span>
+            <input id="fullscreen" class="switch" type="checkbox" />
+          </label>
+        </div>
+        <p id="feature-status" class="status" role="status" aria-live="polite">更改立即生效</p>
+      </section>
+
+      <section class="card" id="backups">
+        <div class="section-heading">
+          <div>
+            <h2>标签组备份</h2>
+            <p class="section-description">备份仅保存在本机，按其中的网址手动恢复</p>
+          </div>
+          <div class="backup-actions">
+            <button id="refresh" class="button" type="button">刷新</button>
+            <button id="export" class="button" type="button" disabled>导出 JSON</button>
+          </div>
+        </div>
+        <p id="backup-status" class="status" role="status" aria-live="polite"></p>
+        <details>
+          <summary>查看备份 JSON</summary>
+          <pre id="backup-output">正在读取…</pre>
+        </details>
       </section>
     </main>
     <script type="module" src="options.js"></script>

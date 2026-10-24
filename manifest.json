@@ -1,11 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Private Browser Toolkit",
-  "description": "自动合并重复标签、整合全屏窗口，并在本地备份标签组；所有数据仅保存在浏览器中。",
-  "version": "0.4.1",
-  "action": {},
+  "description": "切换直连与本机代理、合并重复标签、整合全屏窗口，并在本地备份标签组；所有设置与备份仅保存在浏览器中。",
+  "version": "0.5.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Private Browser Toolkit"
+  },
   "options_page": "options.html",
-  "permissions": ["tabs", "tabGroups", "storage", "unlimitedStorage"],
+  "incognito": "split",
+  "permissions": ["proxy", "tabs", "tabGroups", "storage", "unlimitedStorage"],
   "icons": {
     "16": "icon/icon_16.png",
     "32": "icon/icon_32.png",
