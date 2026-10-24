@@ -52,8 +52,8 @@ export function consumeColdMiss(): boolean {
   return missed;
 }
 
-// 组对象缓存：热路径 backupGroup(number) 省一次 tabGroups.get。
-// 只用于读取组名和颜色，不参与空组判断；任何组 onUpdated 或下次 init 会刷新
+// 组对象缓存：热路径 backupGroup(number) 省一次 tabGroups.get，miss 读取后也会回填。
+// 只用于读取组名和颜色，不参与空组判断；onUpdated 或下次 init 会刷新
 const groupObjectCache = new Map<number, chrome.tabGroups.TabGroup>();
 
 export function noteGroupObject(group: chrome.tabGroups.TabGroup) {

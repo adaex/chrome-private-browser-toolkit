@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createEventRegistry, createStorage, flush, snapshot } from './helpers.mjs';
+import { createEventRegistry, createProxyIndicatorMock, createStorage, flush, snapshot } from './helpers.mjs';
 
 test('启动标签查询失败时中止对账并保留旧快照', async () => {
   const { event } = createEventRegistry();
   const local = createStorage({ 'tabg:g:1': snapshot });
   let groupQueries = 0;
   globalThis.chrome = {
-    action: { onClicked: event('action') },
+    ...createProxyIndicatorMock(),
     tabs: {
       async query() { throw new Error('模拟启动查询失败'); },
       onCreated: event('created'),

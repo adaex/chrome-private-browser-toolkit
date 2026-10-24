@@ -5,9 +5,9 @@
     "dev": "tsc -w",
     "build": "npm run clean && npm run copy && tsc",
     "clean": "rm -rf dist",
-    "copy": "mkdir -p dist && cp -r manifest.json icon options.html dist",
+    "copy": "mkdir -p dist && cp -r manifest.json icon options.html popup.html ui.css dist",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "release": "npm run build && cd dist && zip -r ../extension.zip ."
+    "release": "npm run build && rm -f extension.zip && cd dist && zip -r ../extension.zip ."
   },
   "devDependencies": {
     "@types/chrome": "^0.1.39",

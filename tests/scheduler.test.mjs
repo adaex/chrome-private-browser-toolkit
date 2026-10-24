@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createEventRegistry, createStorage, flush, group } from './helpers.mjs';
+import { createEventRegistry, createProxyIndicatorMock, createStorage, flush, group } from './helpers.mjs';
 
 test('备份按组合并、纯折叠不重写，功能开关无需重启即可生效', async () => {
   const { listeners, event } = createEventRegistry();
@@ -17,7 +17,7 @@ test('备份按组合并、纯折叠不重写，功能开关无需重启即可�
   let allTabQueries = 0;
   const local = createStorage({ 'tabg:meta': { lastInitAt: Date.now() } });
   globalThis.chrome = {
-    action: { onClicked: event('action') },
+    ...createProxyIndicatorMock(),
     tabs: {
       async query(filter) {
         if (!filter.groupId) allTabQueries++;

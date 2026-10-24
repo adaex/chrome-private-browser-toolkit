@@ -96,18 +96,16 @@ function snapshotGroup(group: TabGroup, tabs: chrome.tabs.Tab[], updatedAt: stri
 }
 
 // 备份单个标签组：只写这一个组的 key，不读不写其他数据
-// 普通快照遇到空组可保留旧快照，等随后的 onRemoved 归档；明确空组事件仍删除 active
-export async function backupGroup(groupId: number, preserveEmpty = false) {
-  // 先查标签：组已删除时统一按空组处理，缓存命中与否不再改变归档结果
+export async function backupGroup(groupId: number) {
   const tabs = await chrome.tabs.query({ groupId });
-  if (!tabs.length) {
-    if (!preserveEmpty) await chrome.storage.local.remove(activeKey(groupId));
-    return;
-  }
+  // 空组保留最后 active，供 onRemoved 或下次 init 统一归档
+  if (!tabs.length) return;
 
   let group = resolveGroupObject(groupId);
   if (!group) {
-    group = await chrome.tabGroups.get(groupId);
+    const fetched = await chrome.tabGroups.get(groupId);
+    // get 期间若来了 onUpdated，保留事件刚写入的新对象
+    group = resolveGroupObject(groupId) ?? fetched;
     noteGroupObject(group);
   }
   await chrome.storage.local.set({
@@ -180,6 +178,8 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
       if (!snapshot) continue;
       storedActiveIds.add(snapshot.id);
       prior.set(snapshot.id, snapshot);
+      // 先统一恢复 active，再由下面的实时组对账决定归档、刷新或保留
+      toSet[activeKey(snapshot.id)] = snapshot;
     }
     if (Array.isArray(v1.archived)) {
       for (const item of v1.archived) {
@@ -211,7 +211,7 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
       const [key, value] = archiveEntry(snapshot, Date.now());
       toSet[key] = value;
     }
-    toRemove.push(activeKey(id)); // 移入归档，绝不硬删；畸形无值也至少摘掉键
+    toRemove.push(activeKey(id)); // 有效快照先归档；畸形或无值只能移除 active，避免卡住后续对账
   }
 
   const tabsByGroup = new Map<number, chrome.tabs.Tab[]>();
@@ -228,11 +228,8 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
   const now = new Date().toISOString();
   for (const group of groups) {
     const tabs = tabsByGroup.get(group.id);
-    // 与 backupGroup 同一 upsert 语义：存活但为空（正常会被 Chrome 立即删组）不保留旧键
-    if (!tabs || !tabs.length) {
-      toRemove.push(activeKey(group.id));
-      continue;
-    }
+    // 查询间隙组可能正在删除：空组不写新快照，也不删 active，交给 onRemoved 或下次 init 归档
+    if (!tabs || !tabs.length) continue;
     toSet[activeKey(group.id)] = snapshotGroup(group, tabs, now);
   }
 

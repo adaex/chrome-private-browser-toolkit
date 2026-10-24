@@ -10,5 +10,5 @@
     "pretty": true,
     "removeComments": true
   },
-  "include": ["worker", "options.ts"]
+  "include": ["worker", "options.ts", "popup.ts"]
 }
