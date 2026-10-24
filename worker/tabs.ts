@@ -1,5 +1,3 @@
-import { catchError } from './queue.js';
-
 // 标签当前有效网址：加载中是 pendingUrl，加载完是 url。去重比对与备份拍照必须同一口径
 export const effectiveUrl = (tab: chrome.tabs.Tab): string => tab.pendingUrl ?? tab.url ?? '';
 
@@ -31,7 +29,7 @@ export async function checkDuplicate(tabId: number): Promise<boolean> {
 
   // 特殊情况：打开新标签页，直接关闭历史标签页，新标签保留（不查 pinned，有意）
   if (url.startsWith('chrome://new')) {
-    await chrome.tabs.remove(existedTab.id).catch(catchError('tabs.remove'));
+    await chrome.tabs.remove(existedTab.id);
     return false;
   }
 
@@ -44,19 +42,17 @@ export async function checkDuplicate(tabId: number): Promise<boolean> {
     if (existedTab.groupId > 0) return false; // 新的 tab 在组里，老的 tab 在组里，不处理
     // 新的 tab 在组里，老的 tab 不在组里，同窗时把老的 tab 移进新组；跨窗不成组（组不能跨窗口）
     if (existedTab.windowId === tab.windowId) {
-      await chrome.tabs.group({ tabIds: existedTab.id, groupId: tab.groupId }).catch(
-        catchError('tabs.group'),
-      );
+      await chrome.tabs.group({ tabIds: existedTab.id, groupId: tab.groupId });
     }
   }
 
   // 如果不在一个窗口，需要把老的 tab 所在的窗口激活
   if (existedTab.windowId !== tab.windowId)
-    await chrome.windows.update(existedTab.windowId, { focused: true }).catch(catchError('windows.update'));
+    await chrome.windows.update(existedTab.windowId, { focused: true });
 
-  // 正常激活并删除无用标签
-  await chrome.tabs.update(existedTab.id, { active: true }).catch(catchError('tabs.update'));
-  await chrome.tabs.remove(tab.id).catch(catchError('tabs.remove')); // 必须要等 active 完成之后再 remove，否则会 active 会乱跳
+  // 激活失败会抛给队列并中止，不能继续关掉用户正在打开的标签
+  await chrome.tabs.update(existedTab.id, { active: true });
+  await chrome.tabs.remove(tab.id); // 必须要等 active 完成之后再 remove，否则会 active 会乱跳
   return true;
 }
 
@@ -87,13 +83,23 @@ function pickTarget(duplicates: chrome.tabs.Tab[], tab: chrome.tabs.Tab): chrome
 
 // 如果有全屏的窗口，则把当前 tab 移动到全屏的窗口里去
 export async function toFullscreenWindow(tabId: number, windowId: number) {
-  const windows = await chrome.windows.getAll();
+  const [windows, currentWindow] = await Promise.all([
+    chrome.windows.getAll(),
+    chrome.windows.get(windowId, { populate: true }),
+  ]);
   const fullscreenWindow = windows.find(window => window.state === 'fullscreen' && window.type === 'normal');
-  const currentWindow = windows.find(window => window.id === windowId);
 
-  if (fullscreenWindow?.id && currentWindow?.type === 'normal' && currentWindow.state === 'normal') {
-    await chrome.windows.update(fullscreenWindow.id, { focused: true }).catch(catchError('windows.update'));
-    await chrome.tabs.move(tabId, { windowId: fullscreenWindow.id, index: -1 }).catch(catchError('tabs.move'));
-    await chrome.tabs.update(tabId, { active: true }).catch(catchError('tabs.update'));
+  // index === 0 不等于新窗口；源窗口必须仍只有当前这一个标签，避免拆散已有多标签窗口
+  if (
+    fullscreenWindow?.id &&
+    currentWindow.type === 'normal' &&
+    currentWindow.state === 'normal' &&
+    currentWindow.tabs?.length === 1 &&
+    currentWindow.tabs[0].id === tabId
+  ) {
+    await chrome.tabs.move(tabId, { windowId: fullscreenWindow.id, index: -1 });
+    await chrome.tabs.update(tabId, { active: true });
+    // 先移动再聚焦，移动失败时不把用户焦点抢到另一个窗口
+    await chrome.windows.update(fullscreenWindow.id, { focused: true });
   }
 }

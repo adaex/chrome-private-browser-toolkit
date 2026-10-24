@@ -23,13 +23,14 @@ interface GroupSnapshot {
 //   tabg:g:<groupId>              -> 存活组的快照，每组一个 key；键集合本身就是存活组真相
 //   tabg:a:<groupId>:<删除毫秒时间戳> -> 已删除组的归档，只增不删，恢复靠人工读 JSON
 const META_KEY = 'tabg:meta';
-const ACTIVE_PREFIX = 'tabg:g:';
-const LEGACY_KEY = 'tabGroupBackup'; // v1 的单 key，首次 init 时一次性迁移
+export const ACTIVE_PREFIX = 'tabg:g:';
+export const ARCHIVE_PREFIX = 'tabg:a:';
+export const LEGACY_KEY = 'tabGroupBackup'; // v1 的单 key，首次 init 时一次性迁移
 const INIT_THROTTLE_MS = 5 * 60 * 1000; // SW 频繁重启，全量 init 5 分钟最多一次
 
 const activeKey = (groupId: number) => `${ACTIVE_PREFIX}${groupId}`;
 const archiveKey = (groupId: number, deletedAtMs: number) =>
-  `tabg:a:${groupId}:${deletedAtMs}`;
+  `${ARCHIVE_PREFIX}${groupId}:${deletedAtMs}`;
 
 async function readLastInitAt(): Promise<number> {
   const result = await chrome.storage.local.get(META_KEY);
@@ -95,24 +96,17 @@ function snapshotGroup(group: TabGroup, tabs: chrome.tabs.Tab[], updatedAt: stri
 }
 
 // 备份单个标签组：只写这一个组的 key，不读不写其他数据
-export async function backupGroup(groupOrId: TabGroup | number) {
-  const group =
-    typeof groupOrId === 'object'
-      ? groupOrId
-      : resolveGroupObject(groupOrId) ?? (await chrome.tabGroups.get(groupOrId));
-  if (!group) return;
-
-  const tabs = await chrome.tabs.query({ groupId: group.id });
-
-  // 空组在 Chrome 里会被立即自动删除，紧接着 tabGroups.onRemoved 会来归档。
-  // 清掉旧快照（upsert：空 -> 无状态），否则归档会保留用户刚主动关掉（或拖走）的最后一个标签
+export async function backupGroup(groupId: number) {
+  // 先查标签：组已删除时统一按空组处理，缓存命中与否不再改变归档结果
+  const tabs = await chrome.tabs.query({ groupId });
   if (!tabs.length) {
-    await chrome.storage.local.remove(activeKey(group.id));
+    await chrome.storage.local.remove(activeKey(groupId));
     return;
   }
 
+  const group = resolveGroupObject(groupId) ?? (await chrome.tabGroups.get(groupId));
   await chrome.storage.local.set({
-    [activeKey(group.id)]: snapshotGroup(group, tabs, new Date().toISOString()),
+    [activeKey(groupId)]: snapshotGroup(group, tabs, new Date().toISOString()),
   });
 }
 
@@ -236,11 +230,9 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
     toSet[activeKey(group.id)] = snapshotGroup(group, tabs, now);
   }
 
-  // set/remove 的 key 互不相交（活组只 set、死组 active 只 remove），可并行
-  await Promise.all([
-    Object.keys(toSet).length ? storage.set(toSet) : Promise.resolve(),
-    toRemove.length ? storage.remove(toRemove) : Promise.resolve(),
-  ]);
+  // 先写后删：归档或迁移写入失败时保留旧数据，删除失败至多下次产生重复归档
+  if (Object.keys(toSet).length) await storage.set(toSet);
+  if (toRemove.length) await storage.remove(toRemove);
   // meta 最后写：它的时间戳代表本次对账真正完成
   await storage.set({ [META_KEY]: { lastInitAt: Date.now() } });
 }

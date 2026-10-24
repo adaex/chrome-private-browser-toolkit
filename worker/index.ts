@@ -7,17 +7,31 @@ import {
   noteGroup,
   noteGroupObject,
   rebuildGroupCache,
+  resolveGroupObject,
 } from './groupCache.js';
 import { catchError, queue } from './queue.js';
+import { loadFeatureSettings } from './settings.js';
 import { checkDuplicate, toFullscreenWindow } from './tabs.js';
 
+// 同组只保留一个待执行备份；执行期间又来了事件，可再排一个尾随备份读取最新状态
+const pendingGroupBackups = new Set<number>();
+function scheduleBackup(groupId: number | undefined) {
+  if (!groupId || groupId <= 0 || pendingGroupBackups.has(groupId)) return;
+  pendingGroupBackups.add(groupId);
+  queue.run(async () => {
+    // 让同一轮同步事件先完成合并，例如 complete 与 groupId 同时变化
+    await Promise.resolve();
+    pendingGroupBackups.delete(groupId);
+    await backupGroup(groupId);
+  });
+}
+
 chrome.action.onClicked.addListener(() => {
-  chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+  chrome.runtime.openOptionsPage().catch(catchError('openOptionsPage'));
 });
 
-// SW 唤醒后第一个事件可能与启动重建赛跑：查询在顶层立即发起，尽量抢在事件回调读缓存之前完成
-const initialTabsQuery = chrome.tabs.query({});
-initialTabsQuery.then(rebuildGroupCache).catch(catchError('initialTabsQuery'));
+// 顶层立即查询并重建；失败由启动队列统一记录并中止，不会当成空标签继续对账
+const initialTabsReady = rebuildGroupCache();
 
 chrome.tabs.onCreated.addListener(tab => {
   const tabId = tab.id;
@@ -25,11 +39,13 @@ chrome.tabs.onCreated.addListener(tab => {
   noteGroup(tabId, tab.groupId);
 
   queue.run(async () => {
-    // 先去重：命中重复时新标签会被关掉，全屏吸附就不必再做，也避免焦点在两个窗口间来回跳
-    const removed = await checkDuplicate(tabId);
+    const settings = await loadFeatureSettings();
 
-    // 从外部打开一个全新普通的窗口，且新标签还在，才把这个 tab 移到全屏窗口
-    if (!removed && !tab.openerTabId && tab.index === 0) {
+    // 先去重：命中重复时新标签会被关掉，全屏吸附就不必再做，也避免焦点在两个窗口间来回跳
+    const removed = settings.deduplicate ? await checkDuplicate(tabId) : false;
+
+    // 从外部打开一个全新普通的单标签窗口，且新标签还在，才把这个 tab 移到全屏窗口
+    if (!removed && settings.fullscreen && !tab.openerTabId && tab.index === 0) {
       await toFullscreenWindow(tabId, tab.windowId);
     }
   });
@@ -40,17 +56,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   noteGroup(tabId, tab.groupId);
 
   if (changeInfo.url) {
-    queue.run(() => checkDuplicate(tabId));
+    queue.run(async () => {
+      if ((await loadFeatureSettings()).deduplicate) await checkDuplicate(tabId);
+    });
   }
-
-  // 同一事件可能同时满足多个备份条件（如 groupId 变化且 status=complete），每组本次只入队一次
-  const scheduled = new Set<number>();
-  const scheduleBackup = (groupId: number | undefined) => {
-    if (groupId && groupId > 0 && !scheduled.has(groupId)) {
-      scheduled.add(groupId);
-      queue.run(() => backupGroup(groupId));
-    }
-  };
 
   // complete 时一定有了 title；complete 之后标题再变（SPA 改 document.title 等）也要追上
   if (changeInfo.status === 'complete' || (changeInfo.title && tab.status === 'complete')) {
@@ -69,21 +78,22 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
   forgetTab(tabId);
 
   // 整窗关闭时组本身也会被删，tabGroups.onRemoved 会归档整组，这里不用再拍
-  if (!removeInfo.isWindowClosing && groupId && groupId > 0) {
-    queue.run(() => backupGroup(groupId));
-  }
+  if (!removeInfo.isWindowClosing) scheduleBackup(groupId);
 });
 
 chrome.tabs.onDetached.addListener(tabId => {
   // 跨窗口拖出：标签会被自动移出原组，onDetached 本身不带 groupId，用缓存定位旧组
-  const groupId = formerGroupOf(tabId);
-  if (groupId && groupId > 0) queue.run(() => backupGroup(groupId));
+  scheduleBackup(formerGroupOf(tabId));
 });
 
 chrome.tabGroups.onUpdated.addListener(group => {
-  // 一般是修改名称和颜色、折叠等；无标题是新建组的常态，不当拦截条件
+  const previous = resolveGroupObject(group.id);
   noteGroupObject(group);
-  queue.run(() => backupGroup(group));
+
+  // 快照不保存 collapsed，纯折叠/展开无需重写；缓存 miss 时保守拍一次
+  if (!previous || previous.title !== group.title || previous.color !== group.color) {
+    scheduleBackup(group.id);
+  }
 });
 
 chrome.tabGroups.onRemoved.addListener(group => {
@@ -93,12 +103,11 @@ chrome.tabGroups.onRemoved.addListener(group => {
 });
 
 queue.run(async () => {
-  // 先等启动查询（其 then 已重建缓存）；此期间事件回调已经跑过，cold miss 标志能反映真实情况。
-  // 标志为真说明归属事件抢在缓存就绪前、初始查询也可能捕捉的是变化前状态：重新查最新状态并无视节流
-  const initialTabs = await initialTabsQuery.catch(() => [] as chrome.tabs.Tab[]);
+  const initialTabs = await initialTabsReady;
+
+  // 有归属事件在缓存就绪前 miss，说明旧组可能没拍到：查最新状态并无视节流强刷一次
   if (consumeColdMiss()) {
-    const latestTabs = await chrome.tabs.query({});
-    rebuildGroupCache(latestTabs);
+    const latestTabs = await rebuildGroupCache();
     await initBackupAllGroups(latestTabs, true);
   } else {
     await initBackupAllGroups(initialTabs, false);

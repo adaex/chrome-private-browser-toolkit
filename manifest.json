@@ -4,6 +4,7 @@
   "description": "A private browser toolkit for chrome.",
   "version": "0.3.0",
   "action": {},
+  "options_page": "options.html",
   "permissions": ["tabs", "tabGroups", "storage", "unlimitedStorage"],
   "icons": {
     "16": "icon/icon_16.png",
