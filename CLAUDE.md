@@ -137,12 +137,15 @@ interface GroupSnapshot {
 
 ## 发布更新
 
+商店网页操作固定使用 **CDP + Playwright**：先检查 `http://127.0.0.1:9222/json/version`；若 CDP 未启动，直接执行 `chrome cdp`（使用独立 `Chrome CDP` profile，复用本机 9222 端口和其中的登录态）。随后用 `playwright.chromium.connectOverCDP('http://127.0.0.1:9222')` 连接并操作网页，不要另开无登录态的浏览器
+
 1. 修改 `manifest.json` 中的 `version`（**必须升号**，与线上版本重复会被商店拒绝）
 2. `yarn release` 生成 `extension.zip`
-3. 打开 devconsole 上传页，拖入 zip：
+3. 用 Playwright 打开 devconsole 上传页，通过文件控件上传 `extension.zip`：
    https://chrome.google.com/u/1/webstore/devconsole/27bf1380-10a4-4673-a253-0da100617e74/gnpaolggdcljndfmfealhoefoopkghch/edit/package
 4. 检查「隐私权规范」（新权限理由、数据使用、合规声明）和「商品详情」说明，各页**保存草稿**
 5. 「提请审核」变蓝后提交，确认框勾选"通过审核后自动发布"
+6. 提交后重新读取「状态」和「文件包」页，确认新草稿版本处于「待审核」；审核通过自动发布，不把「已送审」当成「已上线」
 
 ### 坑与必填项
 
@@ -150,6 +153,7 @@ interface GroupSnapshot {
 - **商店文案要与当前功能/manifest 对齐**：发版前通读「商品详情 → 说明」和「隐私权规范 → 单一用途」，删掉已移除能力的描述。0.3.0 移除 bookmarks API 后，两处仍写着"书签同步/bookmarks API"，与 manifest 不符可能被以描述不实打回
 - 本扩展**不收集/不传输任何数据**（纯本地 storage，无 fetch/XHR）→ 数据使用类别一项都不勾（即"不收集用户数据"），并勾选三条合规声明（不出售、不用于无关用途、不用于判定信用）；不收集数据时隐私政策 URL 可留空
 - 各标签页改完先**保存草稿**，右上角「提请审核」变蓝后再提交；提交确认框里勾选"通过审核后自动发布"可免过审后二次操作
+- **审核中的版本不能修改或替换**：上传按钮会被商店禁用；若新版本必须取而代之，先取得用户确认，再从更多菜单取消当前审核，刷新确认恢复草稿后再上传。不要强行修改 disabled 或绕过商店限制
 
 ### 可复用文案（权限理由 / 单一用途）
 
