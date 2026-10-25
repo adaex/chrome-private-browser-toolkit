@@ -95,8 +95,14 @@ async function loadBackups() {
     );
     const activeCount = entries.filter(([key]) => key.startsWith(ACTIVE_PREFIX)).length;
     const archivedCount = entries.filter(([key]) => key.startsWith(ARCHIVE_PREFIX)).length;
+    const hasLegacyBackup = entries.some(([key]) => key === LEGACY_KEY);
     backupOutput.textContent = JSON.stringify(Object.fromEntries(entries), null, 2);
-    showStatus(backupStatus, `当前标签组 ${activeCount} 个，历史归档 ${archivedCount} 条；按 JSON 中的网址手动重开即可恢复`);
+    showStatus(
+      backupStatus,
+      hasLegacyBackup
+        ? '已读取备份（含旧版数据）；迁移完成后请刷新查看计数'
+        : `已读取 ${activeCount} 份组快照、${archivedCount} 条历史归档`,
+    );
     exportButton.disabled = false;
   } catch (error) {
     if (version !== backupLoadVersion) return;
