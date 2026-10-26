@@ -81,10 +81,15 @@ test('直连、本机代理和其他模式使用不同状态图标', async () =>
   const { icons: otherIcons, titles: otherTitles } = installChrome({ value: { mode: 'system' } });
   await syncProxyIndicator();
 
-  assert.equal(icons[0].path[16], 'icon/icon_16.png');
-  assert.equal(icons[1].path[16], 'icon/socks5_16.png');
+  for (const { path } of [...icons, ...otherIcons]) {
+    for (const iconPath of Object.values(path)) {
+      assert.ok(iconPath.startsWith('/'), `Service Worker 图标必须使用根路径：${iconPath}`);
+    }
+  }
+  assert.equal(icons[0].path[16], '/icon/icon_16.png');
+  assert.equal(icons[1].path[16], '/icon/socks5_16.png');
   assert.match(titles[1].title, /127\.0\.0\.1:7890/);
-  assert.equal(otherIcons[0].path[16], 'icon/other_16.png');
+  assert.equal(otherIcons[0].path[16], '/icon/other_16.png');
   assert.match(otherTitles[0].title, /其他代理模式/);
 });
 
@@ -180,5 +185,5 @@ test('慢返回的旧代理状态不会覆盖最新工具栏图标', async () =>
 
   assert.equal(reads, 2);
   assert.equal(icons.length, 1);
-  assert.equal(icons[0].path[16], 'icon/socks5_16.png');
+  assert.equal(icons[0].path[16], '/icon/socks5_16.png');
 });
