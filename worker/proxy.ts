@@ -12,21 +12,22 @@ export interface ProxyStatus {
   controlledByOther: boolean;
 }
 
+// 根路径开头不能省：Service Worker 内相对路径会加载失败，工具栏一直保留初始图标
 const ACTION_ICONS = {
   direct: {
-    16: 'icon/icon_16.png',
-    32: 'icon/icon_32.png',
-    48: 'icon/icon_48.png',
+    16: '/icon/icon_16.png',
+    32: '/icon/icon_32.png',
+    48: '/icon/icon_48.png',
   },
   socks5: {
-    16: 'icon/socks5_16.png',
-    32: 'icon/socks5_32.png',
-    48: 'icon/socks5_48.png',
+    16: '/icon/socks5_16.png',
+    32: '/icon/socks5_32.png',
+    48: '/icon/socks5_48.png',
   },
   other: {
-    16: 'icon/other_16.png',
-    32: 'icon/other_32.png',
-    48: 'icon/other_48.png',
+    16: '/icon/other_16.png',
+    32: '/icon/other_32.png',
+    48: '/icon/other_48.png',
   },
 } as const;
 

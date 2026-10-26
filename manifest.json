@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Private Browser Toolkit",
   "description": "在直连与本机 SOCKS5 之间切换，自动合并重复标签、将新窗口并入全屏窗口，并在本地备份标签组；所有设置与备份仅保存在浏览器中。",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "action": {
     "default_popup": "popup.html",
     "default_title": "Private Browser Toolkit"
