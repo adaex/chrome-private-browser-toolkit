@@ -54,7 +54,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 export const queue = new Queue(1);  // 并发数 = 1，确保 Chrome API 串行执行
 ```
 
-- `Queue` 类：带并发控制的任务队列，每个 task 链上有 `.catch(catchError('queue'))` 兜底
+- `Queue` 类：带并发控制的任务队列，同步抛错也接入 Promise `.catch(catchError('queue'))` 兜底并释放并发名额
 - `catchError(context)`: 返回一个错误处理函数，输出到 console.error
 
 **重要**: 标签、窗口和备份的事件任务通过 `queue.run()` 序列化执行，避免竞态；启动预热查询、代理状态同步与设置页不属于这条队列，独立入口用 `catchError(context)` 兜底。
@@ -64,6 +64,7 @@ export const queue = new Queue(1);  // 并发数 = 1，确保 Chrome API 串行�
 - 仅提供 `direct` 与本机 `socks5`，主机固定 `127.0.0.1`，端口在设置页修改；`scope` 固定为 `regular`，不提供 PAC、多配置或认证管理
 - 以 `chrome.proxy.settings` 的实际配置和 `levelOfControl` 展示状态；其他扩展控制时只提示，不抢控制权。代理切换不检查延迟或连通性
 - 工具栏图标：直连为原三色实心，SOCKS5 为同外径三色空心，其他模式为灰色；状态读取带版本保护，慢返回的旧结果不得覆盖新图标
+- 页面品牌图使用 `icon/icon.svg`；Chrome 清单与 action 继续使用 PNG，三套 SVG 是矢量源，重绘后按标称尺寸同步导出 PNG，不让实际像素尺寸与文件名不一致
 - 代理状态图标候选及替换方法见 `design/icon-states/README.md`；`design/` 不进入 `dist` 或发布包
 - 点击图标打开弹窗；设置与备份页从弹窗链接进入
 
@@ -80,7 +81,7 @@ export const queue = new Queue(1);  // 并发数 = 1，确保 Chrome API 串行�
 |------|------|
 | `effectiveUrl(tab)` | 标签当前有效网址（`pendingUrl ?? url ?? ''`），去重比对与备份拍照共用同一口径 |
 | `checkDuplicate(tabId)` → `boolean` | 查询全部标签，通过 `effectiveUrl` 比对检测重复（两边对称）。常规重复场景下，激活已存在标签成功后才关闭新标签并返回 true；任一步失败抛给队列中止，不吞错继续破坏标签。新标签保留时返回 false（供 onCreated 决定是否还要吸附全屏窗口）。特殊处理：新标签页(`chrome://new*`)、同网址 opener（不限于复制 tab）。同 URL 老标签有多个时按 `pickTarget` 的 `PREFERENCE` 等级选目标：**同组/同窗 > 同窗可并入 > 跨窗可激活 > 新标签在组内时的 pinned/在别组（保留重复）**——不可操作的候选垫底，避免挡住跨窗可用目标 |
-| `toFullscreenWindow(tabId, windowId)` | 只有一个全屏普通窗口候选时，将新普通窗口中唯一的 tab 移入，再激活并聚焦；多个候选、源窗口有多标签或移动失败时不抢焦点 |
+| `toFullscreenWindow(tabId, windowId)` | 先用不带标签的窗口列表确认唯一全屏普通窗口候选，没有候选就直接返回，不读取源窗口标签；有候选时才 populate 源窗口，将其中唯一的 tab 移入、激活并聚焦。多个候选、源窗口有多标签或移动失败时不抢焦点 |
 
 ### 标签组备份: `worker/backup.ts`
 
@@ -94,9 +95,9 @@ tabg:a:<groupId>:<删除时间戳ms>:<随机ID>  已删除组归档，只增不�
 
 | 函数 | 作用 |
 |------|------|
-| `backupGroup(groupId)` | **先读该组全部标签**，空组保留最后 active，供 `onRemoved` 或下次 init 归档；非空才读取组对象（先查缓存、miss 才 `tabGroups.get` 并写入缓存），只 set 这一个组的 key |
+| `backupGroup(groupId)` | **先读该组全部标签**，空组保留最后 active，供 `onRemoved` 或下次 init 归档；非空才读取组对象（先查缓存、miss 才 `tabGroups.get` 并写入缓存）；内容与当前 SW 已确认的 SHA-256 指纹一致时跳过写入，否则只 set 这一个组的 key |
 | `archiveGroup(groupId)` | 组被删除时，把 `tabg:g:<id>` 写成 `tabg:a:<id>:<ms>:<随机ID>`（打 deletedAt）再删掉 active key；无有效快照则无事可做 |
-| `initBackupAllGroups(allTabs, force)` | 缓存由调用方重建；5 分钟节流（force 跳过）；JS 内按 groupId 聚合；刷新存活组，查询窗口内变空的组也保留 active 等归档；存储里有但实时已不存在的组**移入归档**；v1 数据首次发现时迁移；**先写归档/迁移再删旧 key**，写失败保留原数据 |
+| `initBackupAllGroups(allTabs, force)` | 缓存由调用方重建；5 分钟节流（force 跳过）；JS 内按 groupId 聚合；只写新增、非规范或内容变化的存活组，规范且未变的快照保留原 updatedAt；查询窗口内变空的组也保留 active 等归档；存储里有但实时已不存在的组**移入归档**；v1 数据首次发现时迁移，有效 v2 优先于残留 v1；**先写归档/迁移再删旧 key**，写失败保留原数据 |
 
 **数据结构**:
 ```typescript
@@ -110,7 +111,8 @@ interface GroupSnapshot {
 **要点**:
 - **有效归档只增不删**：归档无上限、不截断，Chrome 复用 groupId 或同毫秒重复删除也不会覆盖；漏掉 `onRemoved` 的组在 init 时移入归档。已成功写入的有效快照可用于人工恢复，靠 `unlimitedStorage` 解除 10MB 配额
 - 热路径（标签 complete / 组更新）只写相关小组，同组待执行备份会合并，不再全量重写整个备份对象，归档攒再多也不放大写入
-- init 用 Chrome 130+ 的 `storage.getKeys()` **只枚举键名**（存活组就是 `tabg:g:` 前缀的键集合，与 `tabGroups.query` 的实时组做差集找死组），再定向读死组值归档——归档字节完全不碰；不支持 getKeys 的老版本特性检测回退 `get(null)` 全量读。不维护第二份组 id 索引，增删组无需同步 meta
+- 单组备份另用当前 SW 的 active SHA-256 内容指纹跳过相同快照，不为此增加存储读取，每组只保留 64 个十六进制字符而不常驻完整网址和标题；只有 set 成功才更新指纹，归档入口即摘除。init 开始时先失效、全部步骤成功后再回填，避免部分写入后旧指纹误跳过重写；SW 重启后的首次备份保守落盘
+- init 用 Chrome 130+ 的 `storage.getKeys()` **只枚举键名**（存活组就是 `tabg:g:` 前缀的键集合，与 `tabGroups.query` 的实时组做差集找死组），再一次读回 active 快照供死组归档与存活组内容比较——归档字节完全不碰；不支持 getKeys 的老版本特性检测回退 `get(null)` 全量读。不维护第二份组 id 索引，增删组无需同步 meta
 - **组删除统一归档**：真实 Chrome 中，取消分组是“标签离组 → 组删除”，关闭最后标签是“标签离组 → 组删除 → 标签关闭”；收到组删除时无法可靠区分原因。只要已有有效快照就统一归档，不恢复旧的 `preserveEmpty`／空组清理特例，也不加定时器或猜测状态
 - 所有写入通过 `queue`（并发=1）串行执行，无竞态；读出的快照经 `sanitizeSnapshot` 归一，畸形数据当不存在，不会让后续备份永久抛错
 - 查看/导出：从弹窗底部进入设置与备份页，可手动复制或导出 JSON；读取开始禁用导出，成功生成 JSON 后才启用。也可在 devtools → Application → Storage → Extension storage 查看

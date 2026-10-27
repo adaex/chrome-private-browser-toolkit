@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createEventRegistry, createProxyIndicatorMock, createStorage, flush, group } from './helpers.mjs';
+import { createEventRegistry, createProxyIndicatorMock, createStorage, flush, group, waitFor } from './helpers.mjs';
 
 test('备份按组合并、纯折叠不重写，功能开关无需重启即可生效', async () => {
   const { listeners, event } = createEventRegistry();
@@ -44,13 +44,14 @@ test('备份按组合并、纯折叠不重写，功能开关无需重启即可�
   listeners.updated(tab.id, { title: tab.title }, tab);
   tab = { ...tab, title: '标题二' };
   listeners.updated(tab.id, { title: tab.title }, tab);
+  await waitFor(() => local.writes.length === 1, '首次合并备份未完成');
   await flush();
   assert.equal(local.writes.length, 1);
   assert.equal(local.data['tabg:g:1'].tabs[0].title, '标题二');
 
   const renamedGroup = { ...group, title: '新组名' };
   listeners.groupUpdated(renamedGroup);
-  await flush();
+  await waitFor(() => local.writes.length === 2, '组名变化备份未完成');
   assert.equal(local.writes.length, 2);
   listeners.groupUpdated({ ...renamedGroup, collapsed: true });
   await flush();
@@ -58,7 +59,7 @@ test('备份按组合并、纯折叠不重写，功能开关无需重启即可�
 
   tab = { ...tab, title: '' };
   listeners.updated(tab.id, { title: '' }, tab);
-  await flush();
+  await waitFor(() => local.writes.length === 3, '标题变化备份未完成');
   assert.equal(local.data['tabg:g:1'].tabs[0].title, '');
   assert.equal(local.writes.length, 3);
 

@@ -90,13 +90,18 @@ async function loadBackups() {
   try {
     const stored = await chrome.storage.local.get(null);
     if (version !== backupLoadVersion) return;
-    const entries = Object.entries(stored).filter(
-      ([key]) => key.startsWith(ACTIVE_PREFIX) || key.startsWith(ARCHIVE_PREFIX) || key === LEGACY_KEY,
-    );
-    const activeCount = entries.filter(([key]) => key.startsWith(ACTIVE_PREFIX)).length;
-    const archivedCount = entries.filter(([key]) => key.startsWith(ARCHIVE_PREFIX)).length;
-    const hasLegacyBackup = entries.some(([key]) => key === LEGACY_KEY);
-    backupOutput.textContent = JSON.stringify(Object.fromEntries(entries), null, 2);
+    const entries: Record<string, unknown> = {};
+    let activeCount = 0;
+    let archivedCount = 0;
+    let hasLegacyBackup = false;
+    for (const [key, value] of Object.entries(stored)) {
+      if (key.startsWith(ACTIVE_PREFIX)) activeCount++;
+      else if (key.startsWith(ARCHIVE_PREFIX)) archivedCount++;
+      else if (key === LEGACY_KEY) hasLegacyBackup = true;
+      else continue;
+      entries[key] = value;
+    }
+    backupOutput.textContent = JSON.stringify(entries, null, 2);
     showStatus(
       backupStatus,
       hasLegacyBackup

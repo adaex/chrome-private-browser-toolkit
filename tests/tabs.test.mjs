@@ -88,16 +88,24 @@ const fullscreenWindow = { id: 2, type: 'normal', state: 'fullscreen' };
 
 const fullscreenCases = [
   {
-    name: '多标签普通窗口中的首位标签不会被吸入全屏窗口',
-    sourceTabs: [{ id: 1 }, { id: 2 }],
+    name: '没有全屏窗口时不读取源窗口标签',
+    windows: [normalWindow],
+    expectedWindowReads: 0,
   },
   {
-    name: '多个全屏窗口时不选择任意目标',
+    name: '多标签普通窗口中的首位标签不会被吸入全屏窗口',
+    sourceTabs: [{ id: 1 }, { id: 2 }],
+    expectedWindowReads: 1,
+  },
+  {
+    name: '多个全屏窗口时不选择任意目标或读取源窗口标签',
     windows: [normalWindow, fullscreenWindow, { ...fullscreenWindow, id: 3 }],
+    expectedWindowReads: 0,
   },
   {
     name: '唯一全屏窗口吸附时先移动和激活，再聚焦',
     expectedCalls: ['move', 'activate', 'focus'],
+    expectedWindowReads: 1,
   },
 ];
 
@@ -106,13 +114,18 @@ for (const {
   windows = [normalWindow, fullscreenWindow],
   sourceTabs = [{ id: 2 }],
   expectedCalls = [],
+  expectedWindowReads,
 } of fullscreenCases) {
   test(name, async () => {
     const calls = [];
+    let windowReads = 0;
     globalThis.chrome = {
       windows: {
         async getAll() { return windows; },
-        async get() { return { ...normalWindow, tabs: sourceTabs }; },
+        async get() {
+          windowReads++;
+          return { ...normalWindow, tabs: sourceTabs };
+        },
         async update() { calls.push('focus'); },
       },
       tabs: {
@@ -123,5 +136,6 @@ for (const {
 
     await toFullscreenWindow(2, normalWindow.id);
     assert.deepEqual(calls, expectedCalls);
+    assert.equal(windowReads, expectedWindowReads);
   });
 }
