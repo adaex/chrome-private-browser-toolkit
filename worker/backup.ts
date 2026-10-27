@@ -74,6 +74,30 @@ function sanitizeSnapshot(value: unknown): GroupSnapshot | null {
   return snapshot;
 }
 
+// sanitize 后的内容相同还不够：原始 active 含多余字段、畸形标签或无效时间时仍需借 init 写回清洗
+function isCanonicalSnapshot(value: unknown, snapshot: GroupSnapshot): boolean {
+  const v = value as Record<string, unknown>;
+  const expectedKeys = Object.keys(snapshot);
+  if (
+    Object.keys(v).length !== expectedKeys.length ||
+    !expectedKeys.every(key => key in v) ||
+    !Number.isFinite(Date.parse(snapshot.updatedAt))
+  ) {
+    return false;
+  }
+
+  const rawTabs = v.tabs as unknown[];
+  if (rawTabs.length !== snapshot.tabs.length) return false;
+  for (let i = 0; i < rawTabs.length; i++) {
+    const rawTab = rawTabs[i] as Record<string, unknown>;
+    const cleanTab = snapshot.tabs[i];
+    if (Object.keys(rawTab).length !== 2 || rawTab.url !== cleanTab.url || rawTab.title !== cleanTab.title) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // 归档条目：归档 key 与 deletedAt 盖戳的约定只此一处
 function archiveEntry(snapshot: GroupSnapshot, deletedAtMs: number): [string, GroupSnapshot] {
   return [
@@ -95,6 +119,40 @@ function snapshotGroup(group: TabGroup, tabs: chrome.tabs.Tab[], updatedAt: stri
   };
 }
 
+// updatedAt 只记录拍照时间；内容没变时无需为了刷新时间戳再写一次存储
+function sameSnapshotContent(a: GroupSnapshot, b: GroupSnapshot): boolean {
+  if (
+    a.id !== b.id ||
+    a.title !== b.title ||
+    a.color !== b.color ||
+    a.deletedAt !== b.deletedAt ||
+    a.tabs.length !== b.tabs.length
+  ) {
+    return false;
+  }
+  for (let i = 0; i < a.tabs.length; i++) {
+    if (a.tabs[i].url !== b.tabs[i].url || a.tabs[i].title !== b.tabs[i].title) return false;
+  }
+  return true;
+}
+
+// 与 sameSnapshotContent 同口径，但不保留完整快照；每组只常驻 64 个十六进制字符
+async function snapshotFingerprint(snapshot: GroupSnapshot): Promise<string> {
+  const content = JSON.stringify([
+    snapshot.id,
+    snapshot.title,
+    snapshot.color,
+    snapshot.deletedAt,
+    snapshot.tabs.map(tab => [tab.url, tab.title]),
+  ]);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// 当前 SW 内已确认与存储一致的 active 指纹；complete/title 重复事件无需再写相同快照
+// 不为此增加存储读取；SW 重启后缓存自然清空，首次备份仍保守写入
+const activeSnapshotCache = new Map<number, string>();
+
 // 备份单个标签组：只写这一个组的 key，不读不写其他数据
 export async function backupGroup(groupId: number) {
   const tabs = await chrome.tabs.query({ groupId });
@@ -108,13 +166,19 @@ export async function backupGroup(groupId: number) {
     group = resolveGroupObject(groupId) ?? fetched;
     noteGroupObject(group);
   }
-  await chrome.storage.local.set({
-    [activeKey(groupId)]: snapshotGroup(group, tabs, new Date().toISOString()),
-  });
+  const next = snapshotGroup(group, tabs, new Date().toISOString());
+  const fingerprint = await snapshotFingerprint(next);
+  if (activeSnapshotCache.get(groupId) === fingerprint) return;
+
+  await chrome.storage.local.set({ [activeKey(groupId)]: next });
+  // 只有确认落盘后才更新缓存；写失败时后续事件仍会重试
+  activeSnapshotCache.set(groupId, fingerprint);
 }
 
 // 归档已删除的标签组：active key 移为归档 key（打 deletedAt），不丢弃；无快照则无需动作
 export async function archiveGroup(groupId: number) {
+  // 归档可能改变或移除 active；先失效，失败时也只是后续备份多写一次
+  activeSnapshotCache.delete(groupId);
   const key = activeKey(groupId);
   const result = await chrome.storage.local.get(key);
   const snapshot = sanitizeSnapshot(result[key]);
@@ -130,6 +194,9 @@ export async function archiveGroup(groupId: number) {
 // force=true 表示唤醒后有归属事件抢跑，无视节流、以最新标签状态强刷一次
 export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = false) {
   if (!force && Date.now() - (await readLastInitAt()) < INIT_THROTTLE_MS) return;
+
+  // 对账可能分批写 active、删旧 key；任一步失败都只损失缓存命中，后续备份会保守重写
+  activeSnapshotCache.clear();
 
   const storage = chrome.storage.local;
   // Chrome 130+ 可只枚举键名：归档字节完全不读；老版本回退全量读取
@@ -150,21 +217,38 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
 
   const liveIds = new Set(groups.map(group => group.id));
 
-  // prior：存储侧 active 快照（死组归档要用），只 sanitize 一次
+  // prior：存储侧 active 快照，死组归档与存活组内容比较共用，只 sanitize 一次
   const prior = new Map<number, GroupSnapshot>();
   const storedActiveIds = new Set<number>();
+  const canonicalActiveIds = new Set<number>();
   for (const key of storedKeys) {
     if (!key.startsWith(ACTIVE_PREFIX)) continue;
     const id = Number(key.slice(ACTIVE_PREFIX.length));
     storedActiveIds.add(id);
     if (fullRecord) {
       const snapshot = sanitizeSnapshot(fullRecord[key]);
-      if (snapshot) prior.set(id, snapshot);
+      if (snapshot) {
+        prior.set(id, snapshot);
+        if (isCanonicalSnapshot(fullRecord[key], snapshot)) canonicalActiveIds.add(id);
+      }
+    }
+  }
+
+  // getKeys 路径一次读回 active 值，仍不读取任何归档字节
+  if (hasGetKeys && storedActiveIds.size) {
+    const activeRecord = await storage.get([...storedActiveIds].map(activeKey));
+    for (const id of storedActiveIds) {
+      const snapshot = sanitizeSnapshot(activeRecord[activeKey(id)]);
+      if (snapshot) {
+        prior.set(id, snapshot);
+        if (isCanonicalSnapshot(activeRecord[activeKey(id)], snapshot)) canonicalActiveIds.add(id);
+      }
     }
   }
 
   const toSet: Record<string, unknown> = {};
   const toRemove: string[] = [];
+  const currentFingerprints = new Map<number, string>();
 
   // v1 迁移：旧的单 key 对象拆进 v2 布局，随本次 init 落盘后删除旧 key
   if (legacy && typeof legacy === 'object') {
@@ -177,17 +261,18 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
       const snapshot = sanitizeSnapshot(value);
       if (!snapshot) continue;
       storedActiveIds.add(snapshot.id);
-      prior.set(snapshot.id, snapshot);
-      // 先统一恢复 active，再由下面的实时组对账决定归档、刷新或保留
-      toSet[activeKey(snapshot.id)] = snapshot;
+      // 上次迁移可能已写入更新的 v2；legacy 只补齐没有有效 v2 的 active
+      if (!prior.has(snapshot.id)) {
+        prior.set(snapshot.id, snapshot);
+        toSet[activeKey(snapshot.id)] = snapshot;
+      }
     }
     if (Array.isArray(v1.archived)) {
       for (const item of v1.archived) {
         const snapshot = sanitizeSnapshot(item);
         if (!snapshot) continue;
-        const deletedAtMs = snapshot.deletedAt
-          ? Date.parse(snapshot.deletedAt) || Date.now()
-          : Date.now();
+        const parsedDeletedAt = Date.parse(snapshot.deletedAt ?? '');
+        const deletedAtMs = Number.isNaN(parsedDeletedAt) ? Date.now() : parsedDeletedAt;
         const [key, value] = archiveEntry(snapshot, deletedAtMs);
         toSet[key] = value;
       }
@@ -196,15 +281,7 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
   }
 
   // 死组 = 存储有 active 键但实时已不存在（SW 没在运行时漏掉的 onRemoved）。
-  // getKeys 路径刚才只读了键名，这里定向取死组值；全量路径 prior 已有
   const deadIds = [...storedActiveIds].filter(id => !liveIds.has(id));
-  if (hasGetKeys && deadIds.length) {
-    const deadRecord = await storage.get(deadIds.map(activeKey));
-    for (const id of deadIds) {
-      const snapshot = sanitizeSnapshot(deadRecord[activeKey(id)]);
-      if (snapshot) prior.set(id, snapshot);
-    }
-  }
   for (const id of deadIds) {
     const snapshot = prior.get(id);
     if (snapshot) {
@@ -230,7 +307,15 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
     const tabs = tabsByGroup.get(group.id);
     // 查询间隙组可能正在删除：空组不写新快照，也不删 active，交给 onRemoved 或下次 init 归档
     if (!tabs || !tabs.length) continue;
-    toSet[activeKey(group.id)] = snapshotGroup(group, tabs, now);
+    const next = snapshotGroup(group, tabs, now);
+    const key = activeKey(group.id);
+    const previous = prior.get(group.id);
+    // 全量对账只落盘新增、非规范或内容变化的组；规范且未变的快照保留原 updatedAt
+    // v1 迁移已排的 active 写入仍换成最新快照，不让旧时间戳覆盖现有 v2 数据
+    if (key in toSet || !previous || !canonicalActiveIds.has(group.id) || !sameSnapshotContent(previous, next)) {
+      toSet[key] = next;
+    }
+    currentFingerprints.set(group.id, await snapshotFingerprint(next));
   }
 
   // 先写后删：归档或迁移写入失败时保留旧数据，删除失败至多下次产生重复归档
@@ -238,4 +323,5 @@ export async function initBackupAllGroups(allTabs: chrome.tabs.Tab[], force = fa
   if (toRemove.length) await storage.remove(toRemove);
   // meta 最后写：它的时间戳代表本次对账真正完成
   await storage.set({ [META_KEY]: { lastInitAt: Date.now() } });
+  for (const [id, fingerprint] of currentFingerprints) activeSnapshotCache.set(id, fingerprint);
 }

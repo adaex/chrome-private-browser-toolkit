@@ -84,17 +84,16 @@ function pickTarget(duplicates: chrome.tabs.Tab[], tab: chrome.tabs.Tab): chrome
 
 // 如果有全屏的窗口，则把当前 tab 移动到全屏的窗口里去
 export async function toFullscreenWindow(tabId: number, windowId: number) {
-  const [windows, currentWindow] = await Promise.all([
-    chrome.windows.getAll(),
-    chrome.windows.get(windowId, { populate: true }),
-  ]);
+  const windows = await chrome.windows.getAll();
   const fullscreenWindows = windows.filter(window => window.state === 'fullscreen' && window.type === 'normal');
-  // 多个全屏窗口时无法判断用户想去哪个，宁可不移动
+  // 没有唯一目标时直接返回，避免为不会执行的移动再序列化源窗口的全部标签
   const fullscreenWindow = fullscreenWindows.length === 1 ? fullscreenWindows[0] : undefined;
+  if (!fullscreenWindow?.id) return;
 
-  // index === 0 不等于新窗口；源窗口必须仍只有当前这一个标签，避免拆散已有多标签窗口
+  const currentWindow = await chrome.windows.get(windowId, { populate: true });
+  // 多个全屏窗口时无法判断用户想去哪个，宁可不移动；index === 0 也不等于新窗口
+  // 源窗口必须仍只有当前这一个标签，避免拆散已有多标签窗口
   if (
-    fullscreenWindow?.id &&
     currentWindow.type === 'normal' &&
     currentWindow.state === 'normal' &&
     currentWindow.tabs?.length === 1 &&

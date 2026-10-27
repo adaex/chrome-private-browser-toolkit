@@ -66,6 +66,14 @@ export function flush() {
   return new Promise(resolve => setImmediate(resolve));
 }
 
+export async function waitFor(predicate, message = '等待条件超时') {
+  const deadline = Date.now() + 2000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(message);
+    await flush();
+  }
+}
+
 export const group = {
   id: 1,
   title: '工作',
