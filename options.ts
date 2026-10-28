@@ -2,6 +2,7 @@ import { ACTIVE_PREFIX, ARCHIVE_PREFIX, LEGACY_KEY } from './worker/backup.js';
 import { isValidProxyPort, loadProxyPort, saveProxyPort } from './worker/proxy.js';
 import { Queue } from './worker/queue.js';
 import { loadFeatureSettings, saveFeatureSettings } from './worker/settings.js';
+import { showStatus } from './ui.js';
 
 const deduplicate = document.querySelector<HTMLInputElement>('#deduplicate')!;
 const fullscreen = document.querySelector<HTMLInputElement>('#fullscreen')!;
@@ -18,11 +19,6 @@ let settingsChangeVersion = 0;
 let proxyPortEdited = false;
 const settingsSaveQueue = new Queue(1);
 const inIncognitoContext = chrome.extension?.inIncognitoContext === true;
-
-function showStatus(element: HTMLElement, message: string, error = false) {
-  element.textContent = message;
-  element.classList.toggle('error', error);
-}
 
 if (inIncognitoContext) {
   proxyPort.disabled = true;

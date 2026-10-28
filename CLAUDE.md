@@ -27,7 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 架构与核心模块
 
-后台代码位于 `worker/`，根目录 `popup.ts` / `popup.html` 是代理切换弹窗，`options.ts` / `options.html` 是设置与备份页，`ui.css` 为共用亮色样式，均编译或复制到 `dist/`。功能开关存于 `chrome.storage.local` 的 `featureSettings`，每次任务直接读取；本机代理端口存于 `proxyPort`，默认 `7890`。
+后台代码位于 `worker/`，根目录 `popup.ts` / `popup.html` 是代理切换弹窗，`options.ts` / `options.html` 是设置与备份页，`switch.ts` / `switch.html` 是供本机外部命令打开的一次性代理切换页，`ui.ts` 提供共用状态展示，`ui.css` 为共用亮色样式，均编译或复制到 `dist/`。功能开关存于 `chrome.storage.local` 的 `featureSettings`，每次任务直接读取；本机代理端口存于 `proxyPort`，默认 `7890`。
 
 ### 入口: `worker/index.ts`
 
@@ -57,11 +57,12 @@ export const queue = new Queue(1);  // 并发数 = 1，确保 Chrome API 串行�
 - `Queue` 类：带并发控制的任务队列，同步抛错也接入 Promise `.catch(catchError('queue'))` 兜底并释放并发名额
 - `catchError(context)`: 返回一个错误处理函数，输出到 console.error
 
-**重要**: 标签、窗口和备份的事件任务通过 `queue.run()` 序列化执行，避免竞态；启动预热查询、代理状态同步与设置页不属于这条队列，独立入口用 `catchError(context)` 兜底。
+**重要**: 标签、窗口和备份的事件任务通过 `queue.run()` 序列化执行，避免竞态；所有代理写入另走 `proxyWriteQueue`，启动预热查询、代理状态同步等独立入口用 `catchError(context)` 兜底。
 
-### 网络代理: `worker/proxy.ts` + `popup.ts`
+### 网络代理: `worker/proxy.ts` + `popup.ts` + `switch.ts`
 
-- 仅提供 `direct` 与本机 `socks5`，主机固定 `127.0.0.1`，端口在设置页修改；`scope` 固定为 `regular`，不提供 PAC、多配置或认证管理
+- 仅提供 `direct` 与本机 `socks5`，主机固定 `127.0.0.1`，端口在设置页修改；`scope` 固定为 `regular`，不提供 PAC、多配置或认证管理。SOCKS5 生效时修改端口若存储失败，会把实时代理回滚到修改前配置，避免活跃端口与已保存端口不一致
+- 本机脚本可打开 `chrome-extension://<扩展ID>/switch.html?mode=direct|socks5`，不需要常驻 helper 或新增权限。弹窗 `setProxyMode`、设置页 `saveProxyPort` 与外部页 `requestExternalProxyMode` 都通过 `PROXY_MESSAGE` 交给普通后台，由独立的 `proxyWriteQueue`（并发 1）串行执行 `applyProxyWrite`，不与标签／备份任务互相阻塞，跨页面连续操作不会因旧状态互相覆盖；外部命令相同模式跳过写入，其他扩展控制时拒绝，成功后关闭当前标签，失败保留页面；该页不得加入 `web_accessible_resources`，无痕 split 进程不注册消息入口
 - 以 `chrome.proxy.settings` 的实际配置和 `levelOfControl` 展示状态；其他扩展控制时只提示，不抢控制权。代理切换不检查延迟或连通性
 - 工具栏图标：直连为原三色实心，SOCKS5 为同外径三色空心，其他模式为灰色；状态读取带版本保护，慢返回的旧结果不得覆盖新图标
 - 页面品牌图使用 `icon/icon.svg`；Chrome 清单与 action 继续使用 PNG，三套 SVG 是矢量源，重绘后按标称尺寸同步导出 PNG，不让实际像素尺寸与文件名不一致
@@ -80,8 +81,9 @@ export const queue = new Queue(1);  // 并发数 = 1，确保 Chrome API 串行�
 | 函数 | 作用 |
 |------|------|
 | `effectiveUrl(tab)` | 标签当前有效网址（`pendingUrl ?? url ?? ''`），去重比对与备份拍照共用同一口径 |
-| `checkDuplicate(tabId)` → `boolean` | 查询全部标签，通过 `effectiveUrl` 比对检测重复（两边对称）。常规重复场景下，激活已存在标签成功后才关闭新标签并返回 true；任一步失败抛给队列中止，不吞错继续破坏标签。新标签保留时返回 false（供 onCreated 决定是否还要吸附全屏窗口）。特殊处理：新标签页(`chrome://new*`)、同网址 opener（不限于复制 tab）。同 URL 老标签有多个时按 `pickTarget` 的 `PREFERENCE` 等级选目标：**同组/同窗 > 同窗可并入 > 跨窗可激活 > 新标签在组内时的 pinned/在别组（保留重复）**——不可操作的候选垫底，避免挡住跨窗可用目标 |
-| `toFullscreenWindow(tabId, windowId)` | 先用不带标签的窗口列表确认唯一全屏普通窗口候选，没有候选就直接返回，不读取源窗口标签；有候选时才 populate 源窗口，将其中唯一的 tab 移入、激活并聚焦。多个候选、源窗口有多标签或移动失败时不抢焦点 |
+| `isProxySwitchUrl(url)` | 只识别本扩展的 `switch.html` 及其 query/hash；一次性切换页在 `onCreated` / `onUpdated` 跳过标签管理，`checkDuplicate` 也直接保留，避免失败后的同 URL 重试被关闭 |
+| `checkDuplicate(tabId)` → `boolean` | 查询全部标签，通过 `effectiveUrl` 比对检测重复（两边对称）。常规重复场景下，激活已存在标签成功后才关闭新标签并返回 true；任一步失败抛给队列中止，不吞错继续破坏标签。新标签保留时返回 false（供 onCreated 决定是否还要吸附全屏窗口）。特殊处理：新标签页(`chrome://new*`)、同网址 opener（不限于复制 tab）、本扩展一次性代理切换页。同 URL 老标签有多个时按 `pickTarget` 的 `PREFERENCE` 等级选目标：**同组/同窗 > 同窗可并入 > 跨窗可激活 > 新标签在组内时的 pinned/在别组（保留重复）**——不可操作的候选垫底，避免挡住跨窗可用目标 |
+| `toFullscreenWindow(tabId, windowId)` | 先用不带标签的窗口列表确认唯一全屏普通窗口候选，没有候选就直接返回，不读取源窗口标签；有候选时才 populate 源窗口，将其中唯一的 tab 移入、激活并聚焦。多个候选、源窗口有多标签或移动失败时不抢焦点；移动前用 populate 得到的最新标签再排除代理切换页，覆盖 `onCreated` 时 URL 尚未就绪的情况 |
 
 ### 标签组备份: `worker/backup.ts`
 
@@ -153,7 +155,7 @@ interface GroupSnapshot {
 **“提交、合并发布”是完整发版指令**：按“基线 → 评审与本地包 → 商店送审 → 确认结果 → 代码收尾 → 环境收尾”一次走完，不停在 zip 或“待审核”。只有取消正在审核的版本等会改变既有商店状态的操作需要单独确认；上传、保存或送审失败、状态不明时先停下核实，不自动收尾
 
 1. **基线**：先运行 `git worktree list --porcelain` 并逐树核对未提交工作；全量评审、修改和测试都在包含本次工作的同一个 worktree 中进行，禁止只看主仓重做或宣称全部代码已提交。确认基线后 `git fetch`、更新 `main` 并建 `release/<version>` 分支。检查 `http://127.0.0.1:9222/json/version`，未启动就执行 `chrome cdp`，再用 `playwright.chromium.connectOverCDP('http://127.0.0.1:9222')` 连接；缺少 Playwright 时装到 `/tmp`，不全局安装。复用一个商店页面，先核对发布者、扩展 ID、线上／草稿版本和审核状态
-2. **评审与本地包**：代码完成后先执行 `/code-review` 并处理发现，需要简化时再执行 `/simplify`；评审未结束不得上传。升 `manifest.json` 的 `version`（高于线上和草稿），运行 `yarn test && yarn release`，核对 zip 版本与文件清单；代理、组生命周期或无痕变更还要在隔离 Chrome profile 实测，不操作用户自己的代理设置或备份数据。Chrome 137+ 用 `launchPersistentContext` 经 CDP pipe 启动，`ignoreDefaultArgs` 去掉 `--disable-extensions`、`args` 加 `--enable-unsafe-extension-debugging`，再用 `browser.newBrowserCDPSession()` 调 `Extensions.loadUnpacked`，不要依赖已移除的 `--load-extension`。Service Worker 调试求值不能动态 `import()`，测试钩子只放临时副本，不进发布包。提交前用 `git add -A` 并检查完整暂存清单，新增运行文件不得遗漏
+2. **评审与本地包**：代码完成后先执行 `/code-review` 并处理发现，需要简化时再执行 `/simplify`；评审未结束不得上传。升 `manifest.json` 的 `version`（高于线上和草稿），运行 `yarn test && yarn release`，核对 zip 版本与文件清单；代理、组生命周期或无痕变更还要在隔离 Chrome profile 实测，不操作用户自己的代理设置或备份数据。Chrome 137+ 用 `launchPersistentContext` 经 CDP pipe 启动，`ignoreDefaultArgs` 去掉 `--disable-extensions`、`args` 加 `--enable-unsafe-extension-debugging`，再用 `browser.newBrowserCDPSession()` 调 `Extensions.loadUnpacked`，不要依赖已移除的 `--load-extension`。Service Worker 调试求值不能动态 `import()`，测试钩子只放临时副本，不进发布包。并发外部切换实测用外部命令直接打开目标扩展 URL，不要先 `newPage()` 创建 `about:blank`，否则可能在导航前被重复标签合并。提交前用 `git add -A` 并检查完整暂存清单，新增运行文件不得遗漏
 3. **商店送审**：打开 devconsole 上传页：
    https://chrome.google.com/u/1/webstore/devconsole/27bf1380-10a4-4673-a253-0da100617e74/gnpaolggdcljndfmfealhoefoopkghch/edit/package
    点击「上传新的软件包」打开对话框，再对 `input[type=file]` 设置 `extension.zip`；上传后可能自动跳到商品详情，必须回「文件包」核对版本与权限，不把跳转当失败重传。若旧版本仍在审核，先取得确认，再从「商品详情 → more_vert → 取消审核」恢复可编辑草稿，不绕过商店限制。检查「商品详情」和「隐私权规范」，保存后重新读取字段确认持久化；在「商品详情」或「隐私权规范」页点击「提请审核」（文件包页没有此按钮），确认“通过审核后自动发布”已勾选再提交

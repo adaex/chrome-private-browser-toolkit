@@ -9,10 +9,12 @@ import {
   rebuildGroupCache,
   resolveGroupObject,
 } from './groupCache.js';
-import { catchError, queue } from './queue.js';
-import { syncProxyIndicator } from './proxy.js';
+import { catchError, Queue, queue } from './queue.js';
+import { applyProxyWrite, PROXY_MESSAGE, syncProxyIndicator } from './proxy.js';
 import { loadFeatureSettings } from './settings.js';
-import { checkDuplicate, toFullscreenWindow } from './tabs.js';
+import { checkDuplicate, effectiveUrl, isProxySwitchUrl, toFullscreenWindow } from './tabs.js';
+
+const proxyWriteQueue = new Queue(1);
 
 function startNormalMode() {
   // 同组只保留一个待执行备份；执行期间又来了事件，可再排一个尾随备份读取最新状态
@@ -31,6 +33,20 @@ function startNormalMode() {
   const refreshProxyIndicator = () => {
     syncProxyIndicator().catch(catchError('proxyIndicator'));
   };
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type !== PROXY_MESSAGE) return;
+    proxyWriteQueue.run(async () => {
+      try {
+        sendResponse(await applyProxyWrite(message));
+      } catch (error) {
+        catchError('proxyWrite')(error);
+        sendResponse({ ok: false });
+      }
+    });
+    return true;
+  });
+
   chrome.proxy.settings.onChange.addListener(refreshProxyIndicator);
   refreshProxyIndicator();
 
@@ -41,6 +57,9 @@ function startNormalMode() {
     const tabId = tab.id;
     if (!tabId) return;
     noteGroup(tabId, tab.groupId);
+
+    // 一次性代理切换页不参与标签管理，避免失败后的同 URL 重试被合并或移动
+    if (isProxySwitchUrl(effectiveUrl(tab))) return;
 
     queue.run(async () => {
       const settings = await loadFeatureSettings();
@@ -59,7 +78,7 @@ function startNormalMode() {
     const prevGroupId = formerGroupOf(tabId);
     noteGroup(tabId, tab.groupId);
 
-    if (changeInfo.url) {
+    if (changeInfo.url && !isProxySwitchUrl(changeInfo.url)) {
       queue.run(async () => {
         if ((await loadFeatureSettings()).deduplicate) await checkDuplicate(tabId);
       });

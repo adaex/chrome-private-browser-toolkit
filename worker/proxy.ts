@@ -5,6 +5,17 @@ const PROXY_PORT_KEY = 'proxyPort';
 
 export type ProxyMode = 'direct' | 'socks5';
 export type ProxyModeState = ProxyMode | 'other';
+export const PROXY_MESSAGE = 'proxyWrite';
+
+type ProxyWrite =
+  | { operation: 'setMode'; mode: ProxyMode }
+  | { operation: 'savePort'; port: number }
+  | { operation: 'applyExternal'; mode: ProxyMode };
+
+interface ProxyWriteResponse {
+  ok: boolean;
+  applied?: boolean;
+}
 
 export interface ProxyStatus {
   mode: ProxyModeState;
@@ -72,21 +83,77 @@ async function writeProxyMode(mode: ProxyMode, port: number): Promise<void> {
   await chrome.proxy.settings.set({ value, scope: 'regular' });
 }
 
-export async function setProxyMode(mode: ProxyMode): Promise<void> {
+function isProxyMode(mode: unknown): mode is ProxyMode {
+  return mode === 'direct' || mode === 'socks5';
+}
+
+async function applyProxyMode(mode: ProxyMode): Promise<void> {
   assertRegularProxyContext();
   const port = mode === 'socks5' ? await loadProxyPort() : DEFAULT_PROXY_PORT;
   await writeProxyMode(mode, port);
 }
 
+async function sendProxyWrite(write: ProxyWrite): Promise<ProxyWriteResponse> {
+  const response = await chrome.runtime.sendMessage({ type: PROXY_MESSAGE, ...write });
+  if (!response?.ok) throw new Error('Proxy write failed');
+  return response;
+}
+
+export async function setProxyMode(mode: ProxyMode): Promise<void> {
+  assertRegularProxyContext();
+  await sendProxyWrite({ operation: 'setMode', mode });
+}
+
 export async function saveProxyPort(port: number): Promise<void> {
+  assertRegularProxyContext();
+  if (!isValidProxyPort(port)) throw new Error('Invalid proxy port');
+  await sendProxyWrite({ operation: 'savePort', port });
+}
+
+export async function requestExternalProxyMode(mode: ProxyMode): Promise<boolean> {
+  assertRegularProxyContext();
+  const response = await sendProxyWrite({ operation: 'applyExternal', mode });
+  return response.applied === true;
+}
+
+export async function applyExternalProxyMode(mode: ProxyMode): Promise<boolean> {
+  assertRegularProxyContext();
+  const status = await readProxyStatus(false);
+  if (status.controlledByOther) return false;
+  if (status.mode !== mode) await applyProxyMode(mode);
+  return true;
+}
+
+async function persistProxyPort(port: number): Promise<void> {
   assertRegularProxyContext();
   if (!isValidProxyPort(port)) throw new Error('Invalid proxy port');
 
   const current = await chrome.proxy.settings.get({});
-  if (current.levelOfControl !== 'controlled_by_other_extensions' && proxyModeOf(current.value) === 'socks5') {
-    await writeProxyMode('socks5', port);
+  const updateActiveProxy = current.levelOfControl !== 'controlled_by_other_extensions' && proxyModeOf(current.value) === 'socks5';
+  if (updateActiveProxy) await writeProxyMode('socks5', port);
+  try {
+    await chrome.storage.local.set({ [PROXY_PORT_KEY]: port });
+  } catch (error) {
+    if (updateActiveProxy) await chrome.proxy.settings.set({ value: current.value, scope: 'regular' });
+    throw error;
   }
-  await chrome.storage.local.set({ [PROXY_PORT_KEY]: port });
+}
+
+export async function applyProxyWrite(write: ProxyWrite): Promise<ProxyWriteResponse> {
+  switch (write.operation) {
+    case 'setMode':
+      if (!isProxyMode(write.mode)) throw new Error('Invalid proxy mode');
+      await applyProxyMode(write.mode);
+      return { ok: true };
+    case 'savePort':
+      await persistProxyPort(write.port);
+      return { ok: true };
+    case 'applyExternal':
+      if (!isProxyMode(write.mode)) throw new Error('Invalid proxy mode');
+      return { ok: true, applied: await applyExternalProxyMode(write.mode) };
+    default:
+      throw new Error('Invalid proxy write');
+  }
 }
 
 export async function readProxyStatus(includeConfiguredPort = true): Promise<ProxyStatus> {

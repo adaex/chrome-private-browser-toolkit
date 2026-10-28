@@ -5,6 +5,7 @@ import {
   type ProxyMode,
   type ProxyStatus,
 } from './worker/proxy.js';
+import { showStatus } from './ui.js';
 
 const modeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="proxy-mode"]'));
 const statusText = document.querySelector<HTMLParagraphElement>('#proxy-status')!;
@@ -15,11 +16,6 @@ let blocked = false;
 
 function updateDisabled() {
   for (const input of modeInputs) input.disabled = busy || blocked;
-}
-
-function showStatus(message: string, error = false) {
-  statusText.textContent = message;
-  statusText.classList.toggle('error', error);
 }
 
 function render(status: ProxyStatus) {
@@ -33,11 +29,11 @@ function render(status: ProxyStatus) {
   updateDisabled();
 
   if (status.controlledByOther) {
-    showStatus('代理由其他扩展控制，请先停用它', true);
+    showStatus(statusText,'代理由其他扩展控制，请先停用它', true);
   } else if (status.mode === 'other') {
-    showStatus('当前是其他代理模式，选择一项即可替换');
+    showStatus(statusText,'当前是其他代理模式，选择一项即可替换');
   } else {
-    showStatus(status.mode === 'direct' ? '当前：直连' : '当前：本机 SOCKS5');
+    showStatus(statusText,status.mode === 'direct' ? '当前：直连' : '当前：本机 SOCKS5');
   }
 }
 
@@ -45,14 +41,14 @@ async function refresh(errorMessage?: string) {
   try {
     const status = await readProxyStatus();
     render(status);
-    if (errorMessage) showStatus(errorMessage, true);
+    if (errorMessage) showStatus(statusText,errorMessage, true);
   } catch (error) {
     blocked = true;
     for (const input of modeInputs) {
       input.checked = false;
     }
     updateDisabled();
-    showStatus('读取代理状态失败，请重新打开弹窗', true);
+    showStatus(statusText,'读取代理状态失败，请重新打开弹窗', true);
     console.error(error);
   }
 }
@@ -63,7 +59,7 @@ for (const input of modeInputs) {
     const mode: ProxyMode = input.value === 'socks5' ? 'socks5' : 'direct';
     busy = true;
     updateDisabled();
-    showStatus('正在切换…');
+    showStatus(statusText,'正在切换…');
 
     try {
       await setProxyMode(mode);
@@ -82,7 +78,7 @@ if (chrome.extension.inIncognitoContext) {
   busy = false;
   blocked = true;
   updateDisabled();
-  showStatus('请在普通窗口中切换代理');
+  showStatus(statusText,'请在普通窗口中切换代理');
 } else {
   refresh().finally(() => {
     busy = false;

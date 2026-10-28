@@ -44,6 +44,9 @@ export function createEventRegistry() {
 
 export function createProxyIndicatorMock() {
   return {
+    runtime: {
+      onMessage: { addListener() {} },
+    },
     action: {
       async setIcon() {},
       async setTitle() {},
