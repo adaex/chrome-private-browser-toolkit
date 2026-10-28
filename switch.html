@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>切换网络代理 · Private Browser Toolkit</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      .switch-shell {
+        max-width: 460px;
+        margin: 80px auto;
+        padding: 28px;
+        border: 1px solid var(--border);
+        border-radius: 15px;
+        background: var(--surface);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .switch-note {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="switch-shell">
+      <h1>网络代理</h1>
+      <p id="proxy-status" class="status" role="status" aria-live="polite">正在读取切换指令…</p>
+      <p class="switch-note">切换成功后此页会自动关闭</p>
+    </main>
+    <script type="module" src="switch.js"></script>
+  </body>
+</html>

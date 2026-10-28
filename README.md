@@ -12,6 +12,22 @@
 - **真实状态**：以 Chrome 当前代理设置为准，不轮询、不探测代理可用性，也不把设置成功显示为连接健康
 - **共存提示**：代理由其他扩展控制时只提示，不抢控制权；替换旧代理扩展时，先停用旧扩展再选择模式
 
+#### 从本机脚本切换
+
+不需要常驻辅助进程。外部脚本打开一次性扩展页面，成功后页面自动关闭，失败时保留页面显示原因；相同模式不会重复写入
+
+```bash
+# 直连
+open -g -a "Google Chrome" \
+  "chrome-extension://gnpaolggdcljndfmfealhoefoopkghch/switch.html?mode=direct"
+
+# 本机 SOCKS5
+open -g -a "Google Chrome" \
+  "chrome-extension://gnpaolggdcljndfmfealhoefoopkghch/switch.html?mode=socks5"
+```
+
+以上使用商店版扩展 ID；加载未打包扩展时，将 URL 中的 ID 替换为 `chrome://extensions/` 显示的实际 ID。Chrome 未运行时，命令会启动 Chrome
+
 ### 标签页管理
 
 - **重复标签检测**：自动检测并合并网址完全相同的标签页，可在设置页关闭
@@ -80,6 +96,9 @@ yarn release
 ├── tsconfig.json          # TypeScript 配置
 ├── popup.html             # 工具栏代理切换弹窗
 ├── popup.ts               # 弹窗交互
+├── switch.html            # 外部命令使用的一次性代理切换页
+├── switch.ts              # 外部代理指令校验、切换与自动关页
+├── ui.ts                  # 页面共用的状态展示
 ├── options.html           # 功能设置与备份查看页
 ├── options.ts             # 设置页逻辑
 ├── ui.css                 # 弹窗与设置页共用的亮色样式

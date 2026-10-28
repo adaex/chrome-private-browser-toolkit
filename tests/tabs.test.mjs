@@ -50,6 +50,24 @@ for (const { name, duplicates, expectedCalls } of duplicateCases) {
   });
 }
 
+test('扩展代理切换页不参与重复标签合并', async () => {
+  const url = 'chrome-extension://test-extension/switch.html?mode=direct';
+  const oldTab = { id: 1, url, groupId: -1, windowId: 1, pinned: false };
+  const newTab = { ...oldTab, id: 2 };
+  const calls = [];
+  globalThis.chrome = {
+    runtime: { getURL: path => `chrome-extension://test-extension/${path}` },
+    tabs: {
+      async query() { return [oldTab, newTab]; },
+      async update(id) { calls.push(['activate', id]); },
+      async remove(id) { calls.push(['remove', id]); },
+    },
+  };
+
+  assert.equal(await checkDuplicate(newTab.id), false);
+  assert.deepEqual(calls, []);
+});
+
 test('从同网址 opener 打开时保留重复标签', async () => {
   const oldTab = { id: 1, url: 'https://example.com/', groupId: -1, windowId: 1, pinned: false };
   const newTab = { ...oldTab, id: 2, openerTabId: oldTab.id };
@@ -103,6 +121,11 @@ const fullscreenCases = [
     expectedWindowReads: 0,
   },
   {
+    name: '全屏吸附前发现 URL 晚到的代理切换页时保留原窗口',
+    sourceTabs: [{ id: 2, pendingUrl: 'chrome-extension://test-extension/switch.html?mode=direct' }],
+    expectedWindowReads: 1,
+  },
+  {
     name: '唯一全屏窗口吸附时先移动和激活，再聚焦',
     expectedCalls: ['move', 'activate', 'focus'],
     expectedWindowReads: 1,
@@ -120,6 +143,7 @@ for (const {
     const calls = [];
     let windowReads = 0;
     globalThis.chrome = {
+      runtime: { getURL: path => `chrome-extension://test-extension/${path}` },
       windows: {
         async getAll() { return windows; },
         async get() {

@@ -5,7 +5,7 @@
     "dev": "tsc -w",
     "build": "npm run clean && npm run copy && tsc",
     "clean": "rm -rf dist",
-    "copy": "mkdir -p dist && cp -r manifest.json icon options.html popup.html ui.css dist",
+    "copy": "mkdir -p dist && cp -r manifest.json icon options.html popup.html switch.html ui.css dist",
     "test": "npm run build && node --test tests/*.test.mjs",
     "release": "npm run build && rm -f extension.zip && cd dist && zip -r ../extension.zip ."
   },

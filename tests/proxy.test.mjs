@@ -3,8 +3,12 @@ import test from 'node:test';
 
 import {
   DEFAULT_PROXY_PORT,
+  applyExternalProxyMode,
+  applyProxyWrite,
   loadProxyPort,
+  PROXY_MESSAGE,
   readProxyStatus,
+  requestExternalProxyMode,
   saveProxyPort,
   setProxyMode,
   syncProxyIndicator,
@@ -18,13 +22,23 @@ const localSocks = port => ({
   },
 });
 
-function installChrome({ value = { mode: 'direct' }, levelOfControl = 'controlled_by_this_extension', initial = {} } = {}) {
-  const local = createStorage(initial);
+function installChrome({ value = { mode: 'direct' }, levelOfControl = 'controlled_by_this_extension', initial = {}, failSet } = {}) {
+  const local = createStorage(initial, { failSet });
   const sets = [];
+  const messages = [];
   let readCount = 0;
   const icons = [];
   const titles = [];
   globalThis.chrome = {
+    runtime: {
+      async sendMessage(message) {
+        messages.push(structuredClone(message));
+        return {
+          ok: true,
+          ...(message.operation === 'applyExternal' ? { applied: true } : {}),
+        };
+      },
+    },
     storage: { local },
     proxy: {
       settings: {
@@ -43,18 +57,56 @@ function installChrome({ value = { mode: 'direct' }, levelOfControl = 'controlle
       async setTitle(details) { titles.push(details); },
     },
   };
-  return { local, sets, readCount: () => readCount, icons, titles };
+  return { local, sets, messages, readCount: () => readCount, icons, titles };
 }
 
 test('默认使用本机 SOCKS5 7890，直连通过显式 direct 设置', async () => {
   const { sets } = installChrome();
 
-  await setProxyMode('socks5');
-  await setProxyMode('direct');
+  await applyProxyWrite({ operation: 'setMode', mode: 'socks5' });
+  await applyProxyWrite({ operation: 'setMode', mode: 'direct' });
 
   assert.deepEqual(sets, [
     { value: localSocks(DEFAULT_PROXY_PORT), scope: 'regular' },
     { value: { mode: 'direct' }, scope: 'regular' },
+  ]);
+});
+
+test('弹窗、设置页和外部页的公开写入入口发送统一后台消息', async () => {
+  const { messages, sets } = installChrome();
+
+  await setProxyMode('socks5');
+  await saveProxyPort(1080);
+  assert.equal(await requestExternalProxyMode('direct'), true);
+
+  assert.deepEqual(messages, [
+    { type: PROXY_MESSAGE, operation: 'setMode', mode: 'socks5' },
+    { type: PROXY_MESSAGE, operation: 'savePort', port: 1080 },
+    { type: PROXY_MESSAGE, operation: 'applyExternal', mode: 'direct' },
+  ]);
+  assert.equal(sets.length, 0);
+
+  chrome.runtime.sendMessage = async () => ({ ok: false });
+  await assert.rejects(setProxyMode('direct'), /Proxy write failed/);
+});
+
+test('外部切换跳过相同模式，并在其他扩展控制时拒绝写入', async () => {
+  const direct = installChrome();
+  assert.equal(await applyExternalProxyMode('direct'), true);
+  assert.equal(direct.sets.length, 0);
+
+  const blocked = installChrome({
+    value: localSocks(7890),
+    levelOfControl: 'controlled_by_other_extensions',
+  });
+  assert.equal(await applyExternalProxyMode('direct'), false);
+  assert.equal(blocked.sets.length, 0);
+  assert.equal(blocked.local.writes.length, 0);
+
+  const changed = installChrome({ initial: { proxyPort: 1080 } });
+  assert.equal(await applyExternalProxyMode('socks5'), true);
+  assert.deepEqual(changed.sets, [
+    { value: localSocks(1080), scope: 'regular' },
   ]);
 });
 
@@ -76,7 +128,7 @@ test('直连、本机代理和其他模式使用不同状态图标', async () =>
   const { icons, titles } = installChrome();
 
   await syncProxyIndicator();
-  await setProxyMode('socks5');
+  await applyProxyWrite({ operation: 'setMode', mode: 'socks5' });
   await syncProxyIndicator();
   const { icons: otherIcons, titles: otherTitles } = installChrome({ value: { mode: 'system' } });
   await syncProxyIndicator();
@@ -96,10 +148,10 @@ test('直连、本机代理和其他模式使用不同状态图标', async () =>
 test('端口保存后立即用于本机代理，直连时不修改代理设置', async () => {
   const { local, sets } = installChrome();
 
-  await saveProxyPort(1080);
+  await applyProxyWrite({ operation: 'savePort', port: 1080 });
   assert.equal(sets.length, 0);
-  await setProxyMode('socks5');
-  await saveProxyPort(2080);
+  await applyProxyWrite({ operation: 'setMode', mode: 'socks5' });
+  await applyProxyWrite({ operation: 'savePort', port: 2080 });
 
   assert.equal(sets[0].value.rules.singleProxy.port, 1080);
   assert.equal(sets[1].value.rules.singleProxy.port, 2080);
@@ -113,10 +165,29 @@ test('其他扩展控制代理时仍可保存端口，但不抢控制权', async
     levelOfControl: 'controlled_by_other_extensions',
   });
 
-  await saveProxyPort(9000);
+  await applyProxyWrite({ operation: 'savePort', port: 9000 });
 
   assert.equal(sets.length, 0);
   assert.equal(local.data.proxyPort, 9000);
+});
+
+test('实时代理端口已更新但存储失败时回滚到原端口', async () => {
+  const { local, sets } = installChrome({
+    value: localSocks(7890),
+    initial: { proxyPort: 7890 },
+    failSet: values => 'proxyPort' in values,
+  });
+
+  await assert.rejects(
+    applyProxyWrite({ operation: 'savePort', port: 2080 }),
+    /模拟存储写入失败/,
+  );
+
+  assert.deepEqual(sets, [
+    { value: localSocks(2080), scope: 'regular' },
+    { value: localSocks(7890), scope: 'regular' },
+  ]);
+  assert.equal(local.data.proxyPort, 7890);
 });
 
 test('无痕上下文不读写代理设置或保存端口', async () => {
@@ -125,6 +196,7 @@ test('无痕上下文不读写代理设置或保存端口', async () => {
 
   await assert.rejects(setProxyMode('direct'));
   await assert.rejects(setProxyMode('socks5'));
+  await assert.rejects(applyExternalProxyMode('direct'));
   await assert.rejects(saveProxyPort(9000));
 
   assert.equal(readCount(), 0);

@@ -1,6 +1,12 @@
 // 标签当前有效网址：加载中是 pendingUrl，加载完是 url。去重比对与备份拍照必须同一口径
 export const effectiveUrl = (tab: chrome.tabs.Tab): string => tab.pendingUrl ?? tab.url ?? '';
 
+export function isProxySwitchUrl(url: string): boolean {
+  if (!url.startsWith('chrome-extension://')) return false;
+  const switchUrl = chrome.runtime.getURL('switch.html');
+  return url === switchUrl || url.startsWith(`${switchUrl}?`) || url.startsWith(`${switchUrl}#`);
+}
+
 // 监听 tab 的创建和更新事件，检查是否有重复的 tab
 // 返回 true 表示新标签已被关闭（重复命中），调用方不要再操作这个标签
 export async function checkDuplicate(tabId: number): Promise<boolean> {
@@ -13,6 +19,9 @@ export async function checkDuplicate(tabId: number): Promise<boolean> {
 
   // 异常不存在，直接忽略
   if (!tab?.id) return false;
+
+  // 外部切换失败后可能保留页面，重试相同 URL 时不能被当成普通重复标签关掉
+  if (isProxySwitchUrl(url)) return false;
 
   // 获取全部同 URL 的已存在标签（可能不止一个，不能吃 query 的数组顺序，要按优先级挑目标）
   // 新标签自身还没有 URL 时不去重（否则两个空 URL 标签会互相匹配）
@@ -97,7 +106,8 @@ export async function toFullscreenWindow(tabId: number, windowId: number) {
     currentWindow.type === 'normal' &&
     currentWindow.state === 'normal' &&
     currentWindow.tabs?.length === 1 &&
-    currentWindow.tabs[0].id === tabId
+    currentWindow.tabs[0].id === tabId &&
+    !isProxySwitchUrl(effectiveUrl(currentWindow.tabs[0]))
   ) {
     await chrome.tabs.move(tabId, { windowId: fullscreenWindow.id, index: -1 });
     await chrome.tabs.update(tabId, { active: true });
