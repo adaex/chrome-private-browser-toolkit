@@ -104,6 +104,7 @@ yarn release
 ├── ui.css                 # 弹窗与设置页共用的亮色样式
 ├── icon/                  # 品牌图标与当前代理状态图标
 ├── design/icon-states/    # 可替换的代理图标候选，不进入发布包
+├── docs/                  # 按需阅读的架构、实测与发布文档
 ├── tests/                 # Node 内置 test runner 回归测试
 └── worker/                # Service Worker 脚本与共享模块
     ├── queue.ts           # 串行队列实现
