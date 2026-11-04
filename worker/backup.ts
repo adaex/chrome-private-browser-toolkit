@@ -28,6 +28,50 @@ export const ARCHIVE_PREFIX = 'tabg:a:';
 export const LEGACY_KEY = 'tabGroupBackup'; // v1 的单 key，首次 init 时一次性迁移
 const INIT_THROTTLE_MS = 5 * 60 * 1000; // SW 频繁重启，全量 init 5 分钟最多一次
 
+export interface BackupSummary {
+  activeCount: number;
+  archivedCount: number;
+  hasLegacyBackup: boolean;
+}
+
+function countBackupKey(summary: BackupSummary, key: string): boolean {
+  if (key.startsWith(ACTIVE_PREFIX)) summary.activeCount++;
+  else if (key.startsWith(ARCHIVE_PREFIX)) summary.archivedCount++;
+  else if (key === LEGACY_KEY) summary.hasLegacyBackup = true;
+  else return false;
+  return true;
+}
+
+function summarizeBackupKeys(keys: string[]): BackupSummary {
+  const summary: BackupSummary = { activeCount: 0, archivedCount: 0, hasLegacyBackup: false };
+  for (const key of keys) countBackupKey(summary, key);
+  return summary;
+}
+
+function selectBackupEntries(stored: Record<string, unknown>) {
+  const entries: Record<string, unknown> = {};
+  const summary: BackupSummary = { activeCount: 0, archivedCount: 0, hasLegacyBackup: false };
+  for (const [key, value] of Object.entries(stored)) {
+    if (countBackupKey(summary, key)) entries[key] = value;
+  }
+  return { entries, summary };
+}
+
+// 支持 getKeys 时统计不读取归档内容，老版本回退全量读取键名
+async function readBackupKeys(): Promise<string[]> {
+  const storage = chrome.storage.local;
+  if (typeof storage.getKeys === 'function') return storage.getKeys();
+  return Object.keys(await storage.get(null));
+}
+
+export async function readBackupSummary(): Promise<BackupSummary> {
+  return summarizeBackupKeys(await readBackupKeys());
+}
+
+export async function readBackupDetails() {
+  return selectBackupEntries(await chrome.storage.local.get(null));
+}
+
 const activeKey = (groupId: number) => `${ACTIVE_PREFIX}${groupId}`;
 const archiveKey = (groupId: number, deletedAtMs: number) =>
   `${ARCHIVE_PREFIX}${groupId}:${deletedAtMs}:${crypto.randomUUID()}`;

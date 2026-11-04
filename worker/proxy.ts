@@ -35,12 +35,17 @@ const ACTION_ICONS = {
     32: '/icon/socks5_32.png',
     48: '/icon/socks5_48.png',
   },
-  other: {
-    16: '/icon/other_16.png',
-    32: '/icon/other_32.png',
-    48: '/icon/other_48.png',
-  },
 } as const;
+
+const ICON_VARIANTS: Record<ProxyModeState, keyof typeof ACTION_ICONS> = {
+  direct: 'direct',
+  socks5: 'socks5',
+  other: 'direct',
+};
+
+export function pageIconForProxyMode(mode: ProxyModeState): string {
+  return ICON_VARIANTS[mode] === 'socks5' ? 'icon/socks5.svg' : 'icon/icon.svg';
+}
 
 export function isValidProxyPort(port: number): boolean {
   return Number.isInteger(port) && port >= 1 && port <= 65535;
@@ -52,7 +57,7 @@ function assertRegularProxyContext() {
   }
 }
 
-function proxyModeOf(value: chrome.proxy.ProxyConfig): ProxyModeState {
+export function proxyModeOf(value: chrome.proxy.ProxyConfig): ProxyModeState {
   if (value.mode === 'direct') return 'direct';
   const proxy = value.rules?.singleProxy;
   if (
@@ -187,7 +192,7 @@ export async function syncProxyIndicator(): Promise<void> {
   const controller = status.controlledByOther ? ' · 由其他扩展控制' : '';
 
   await Promise.all([
-    chrome.action.setIcon({ path: ACTION_ICONS[status.mode] }),
+    chrome.action.setIcon({ path: ACTION_ICONS[ICON_VARIANTS[status.mode]] }),
     chrome.action.setTitle({ title: `Private Browser Toolkit\n当前：${mode}${controller}` }),
   ]);
 }

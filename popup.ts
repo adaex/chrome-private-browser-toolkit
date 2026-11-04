@@ -5,14 +5,19 @@ import {
   type ProxyMode,
   type ProxyStatus,
 } from './worker/proxy.js';
-import { showStatus } from './ui.js';
+import { setProxyStatusIcon, showStatus } from './ui.js';
 
 const modeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="proxy-mode"]'));
 const statusText = document.querySelector<HTMLParagraphElement>('#proxy-status')!;
 const socksEndpoint = document.querySelector<HTMLElement>('#socks-endpoint')!;
+const statusIcon = document.querySelector<HTMLImageElement>('#proxy-status-icon')!;
 
 let busy = true;
 let blocked = false;
+let proxyChangeVersion = 0;
+let refreshInFlight: Promise<void> | null = null;
+let refreshQueued = false;
+let queuedErrorMessage: string | undefined;
 
 function updateDisabled() {
   for (const input of modeInputs) input.disabled = busy || blocked;
@@ -20,6 +25,7 @@ function updateDisabled() {
 
 function render(status: ProxyStatus) {
   blocked = status.controlledByOther;
+  setProxyStatusIcon(statusIcon, status.mode);
   socksEndpoint.textContent = `${LOCAL_PROXY_HOST}:${status.port}`;
 
   for (const input of modeInputs) {
@@ -37,7 +43,7 @@ function render(status: ProxyStatus) {
   }
 }
 
-async function refresh(errorMessage?: string) {
+async function performRefresh(errorMessage?: string) {
   try {
     const status = await readProxyStatus();
     render(status);
@@ -53,6 +59,28 @@ async function refresh(errorMessage?: string) {
   }
 }
 
+// 串行读取并合并事件；读取期间的新变化只补一次尾随刷新，不并发重复请求
+async function refresh(errorMessage?: string) {
+  if (refreshInFlight) {
+    refreshQueued = true;
+    queuedErrorMessage = errorMessage;
+    return refreshInFlight;
+  }
+
+  refreshInFlight = performRefresh(errorMessage);
+  try {
+    await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+    if (refreshQueued) {
+      refreshQueued = false;
+      const nextErrorMessage = queuedErrorMessage;
+      queuedErrorMessage = undefined;
+      await refresh(nextErrorMessage);
+    }
+  }
+}
+
 for (const input of modeInputs) {
   input.addEventListener('change', async () => {
     if (!input.checked || busy || blocked) return;
@@ -61,9 +89,11 @@ for (const input of modeInputs) {
     updateDisabled();
     showStatus(statusText,'正在切换…');
 
+    // 切换期间已收到变化事件时，事件刷新已经覆盖本次写入，不再重复读取
+    const changeVersion = proxyChangeVersion;
     try {
       await setProxyMode(mode);
-      await refresh();
+      if (proxyChangeVersion === changeVersion) await refresh();
     } catch (error) {
       console.error(error);
       await refresh('切换失败，请重试');
@@ -80,6 +110,10 @@ if (chrome.extension.inIncognitoContext) {
   updateDisabled();
   showStatus(statusText,'请在普通窗口中切换代理');
 } else {
+  chrome.proxy.settings.onChange.addListener(() => {
+    proxyChangeVersion++;
+    void refresh();
+  });
   refresh().finally(() => {
     busy = false;
     updateDisabled();

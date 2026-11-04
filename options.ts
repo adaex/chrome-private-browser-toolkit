@@ -1,8 +1,12 @@
-import { ACTIVE_PREFIX, ARCHIVE_PREFIX, LEGACY_KEY } from './worker/backup.js';
+import {
+  readBackupDetails,
+  readBackupSummary,
+  type BackupSummary,
+} from './worker/backup.js';
 import { isValidProxyPort, loadProxyPort, saveProxyPort } from './worker/proxy.js';
 import { Queue } from './worker/queue.js';
 import { loadFeatureSettings, saveFeatureSettings } from './worker/settings.js';
-import { showStatus } from './ui.js';
+import { showStatus, startProxyStatusIconSync } from './ui.js';
 
 const deduplicate = document.querySelector<HTMLInputElement>('#deduplicate')!;
 const fullscreen = document.querySelector<HTMLInputElement>('#fullscreen')!;
@@ -11,7 +15,9 @@ const proxyForm = document.querySelector<HTMLFormElement>('#proxy-form')!;
 const proxyPort = document.querySelector<HTMLInputElement>('#proxy-port')!;
 const proxySave = document.querySelector<HTMLButtonElement>('#proxy-save')!;
 const proxyStatus = document.querySelector<HTMLParagraphElement>('#proxy-status')!;
+const proxyStatusIcon = document.querySelector<HTMLImageElement>('#proxy-status-icon')!;
 const backupStatus = document.querySelector<HTMLParagraphElement>('#backup-status')!;
+const backupDetails = document.querySelector<HTMLDetailsElement>('#backup-details')!;
 const backupOutput = document.querySelector<HTMLPreElement>('#backup-output')!;
 const exportButton = document.querySelector<HTMLButtonElement>('#export')!;
 
@@ -78,32 +84,25 @@ proxyForm.addEventListener('submit', async event => {
 });
 
 let backupLoadVersion = 0;
+let backupJson: string | null = null;
+let backupOutputDirty = true;
 
-async function loadBackups() {
+function backupSummaryMessage(summary: BackupSummary) {
+  if (summary.hasLegacyBackup) {
+    return '已读取备份（含旧版数据）；迁移完成后请刷新查看计数';
+  }
+  return `已读取 ${summary.activeCount} 份组快照、${summary.archivedCount} 条历史归档`;
+}
+
+// 打开设置页只按键名统计，避免为折叠的备份面板读取并格式化全部历史归档
+async function loadBackupSummary() {
   const version = ++backupLoadVersion;
   showStatus(backupStatus, '正在读取…');
   exportButton.disabled = true;
   try {
-    const stored = await chrome.storage.local.get(null);
+    const summary = await readBackupSummary();
     if (version !== backupLoadVersion) return;
-    const entries: Record<string, unknown> = {};
-    let activeCount = 0;
-    let archivedCount = 0;
-    let hasLegacyBackup = false;
-    for (const [key, value] of Object.entries(stored)) {
-      if (key.startsWith(ACTIVE_PREFIX)) activeCount++;
-      else if (key.startsWith(ARCHIVE_PREFIX)) archivedCount++;
-      else if (key === LEGACY_KEY) hasLegacyBackup = true;
-      else continue;
-      entries[key] = value;
-    }
-    backupOutput.textContent = JSON.stringify(entries, null, 2);
-    showStatus(
-      backupStatus,
-      hasLegacyBackup
-        ? '已读取备份（含旧版数据）；迁移完成后请刷新查看计数'
-        : `已读取 ${activeCount} 份组快照、${archivedCount} 条历史归档`,
-    );
+    showStatus(backupStatus, backupSummaryMessage(summary));
     exportButton.disabled = false;
   } catch (error) {
     if (version !== backupLoadVersion) return;
@@ -112,9 +111,48 @@ async function loadBackups() {
   }
 }
 
-document.querySelector<HTMLButtonElement>('#refresh')!.addEventListener('click', loadBackups);
-exportButton.addEventListener('click', () => {
-  const blob = new Blob([backupOutput.textContent ?? '{}'], { type: 'application/json' });
+async function loadBackups(): Promise<string | null> {
+  const version = ++backupLoadVersion;
+  showStatus(backupStatus, '正在读取…');
+  exportButton.disabled = true;
+  try {
+    const { entries, summary } = await readBackupDetails();
+    if (version !== backupLoadVersion) return null;
+    const json = JSON.stringify(entries, null, 2);
+    backupJson = json;
+    if (backupDetails.open) {
+      backupOutput.textContent = json;
+      backupOutputDirty = false;
+    } else {
+      backupOutputDirty = true;
+    }
+    showStatus(backupStatus, backupSummaryMessage(summary));
+    exportButton.disabled = false;
+    return json;
+  } catch (error) {
+    if (version !== backupLoadVersion) return null;
+    showStatus(backupStatus, '读取备份失败，请重试', true);
+    exportButton.disabled = backupJson === null;
+    console.error(error);
+    return null;
+  }
+}
+
+document.querySelector<HTMLButtonElement>('#refresh')!.addEventListener('click', () => {
+  void loadBackups();
+});
+backupDetails.addEventListener('toggle', () => {
+  if (!backupDetails.open) return;
+  if (backupJson === null) void loadBackups();
+  else if (backupOutputDirty) {
+    backupOutput.textContent = backupJson;
+    backupOutputDirty = false;
+  }
+});
+exportButton.addEventListener('click', async () => {
+  const json = backupJson ?? (await loadBackups());
+  if (json === null) return;
+  const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -124,7 +162,7 @@ exportButton.addEventListener('click', () => {
 });
 
 async function initialize() {
-  const backupsReady = loadBackups();
+  const backupsReady = loadBackupSummary();
   const [settingsResult, portResult] = await Promise.allSettled([loadFeatureSettings(), loadProxyPort()]);
 
   if (settingsResult.status === 'fulfilled') {
@@ -148,4 +186,5 @@ async function initialize() {
   await backupsReady;
 }
 
+startProxyStatusIconSync(proxyStatusIcon);
 initialize();

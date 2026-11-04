@@ -217,7 +217,7 @@
   <body>
     <main class="options-shell">
       <header class="options-header">
-        <img src="icon/icon.svg" alt="" />
+        <img id="proxy-status-icon" src="icon/icon.svg" alt="" />
         <div>
           <h1>Private Browser Toolkit</h1>
           <p>代理切换、标签整理与标签组备份</p>
@@ -279,9 +279,9 @@
           </div>
         </div>
         <p id="backup-status" class="status" role="status" aria-live="polite"></p>
-        <details>
+        <details id="backup-details">
           <summary>查看备份 JSON</summary>
-          <pre id="backup-output">正在读取…</pre>
+          <pre id="backup-output">展开后读取</pre>
         </details>
       </section>
     </main>

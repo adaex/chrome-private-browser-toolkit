@@ -124,7 +124,7 @@ test('代理状态读取 Chrome 实际配置和外部控制状态', async () => 
   });
 });
 
-test('直连、本机代理和其他模式使用不同状态图标', async () => {
+test('直连和其他模式使用实心图标，本机代理使用空心图标', async () => {
   const { icons, titles } = installChrome();
 
   await syncProxyIndicator();
@@ -141,7 +141,7 @@ test('直连、本机代理和其他模式使用不同状态图标', async () =>
   assert.equal(icons[0].path[16], '/icon/icon_16.png');
   assert.equal(icons[1].path[16], '/icon/socks5_16.png');
   assert.match(titles[1].title, /127\.0\.0\.1:7890/);
-  assert.equal(otherIcons[0].path[16], '/icon/other_16.png');
+  assert.equal(otherIcons[0].path[16], '/icon/icon_16.png');
   assert.match(otherTitles[0].title, /其他代理模式/);
 });
 

@@ -40,7 +40,6 @@ test('所有 SVG 均为一上两下、左右对称、三圆等距且左右贴边
   const files = [
     'icon/icon.svg',
     'icon/socks5.svg',
-    'icon/other.svg',
     'design/icon-states/2.5A/socks5.svg',
     'design/icon-states/2.5B/socks5.svg',
     'design/icon-states/3A/socks5.svg',
